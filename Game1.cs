@@ -2,7 +2,6 @@ using DvorFight.Audio;
 using DvorFight.Combat;
 using DvorFight.Config;
 using DvorFight.Core;
-using DvorFight.Domain;
 using DvorFight.Input;
 using DvorFight.Rendering;
 using FontStashSharp;
@@ -13,8 +12,9 @@ using Microsoft.Xna.Framework.Input;
 namespace DvorFight;
 
 /// <summary>
-/// The MonoGame shell: window, game loop, menu / fight / result screens.
-/// All gameplay lives in <see cref="FightSession"/> and the domain layer.
+/// The MonoGame shell: window, game loop and transitions between the menu screens and
+/// the fight. All gameplay lives in <see cref="FightSession"/>; all menu logic and
+/// drawing lives in the <see cref="MenuScreen"/> subclasses under Rendering/.
 /// </summary>
 public class Game1 : Game
 {
@@ -22,21 +22,22 @@ public class Game1 : Game
     private SpriteBatch _spriteBatch = null!;
 
     private FontSystem _fontSystem = null!;
-    private DynamicSpriteFont _fontTitle = null!;
-    private DynamicSpriteFont _fontBig = null!;
-    private DynamicSpriteFont _fontName = null!;
-    private DynamicSpriteFont _fontSmall = null!;
+    private FontSet _fonts = null!;
 
     private AssetStore _assets = null!;
     private Renderer _renderer = null!;
     private readonly ScreenScaler _scaler = new();
     private Background _background = null!;
     private Hud _hud = null!;
+    private ResultOverlay _resultOverlay = null!;
     private AudioEngine _audio = null!;
     private InputController _input = null!;
     private FightSession _session = null!;
 
-    private GameScreen _screen = GameScreen.Menu;
+    private readonly MenuState _menuState = new();
+    private MenuScreen _menuScreen = null!;
+
+    private GameScreen _screen = GameScreen.Title;
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;
     private int _framesDrawn;
@@ -44,8 +45,14 @@ public class Game1 : Game
     /// <summary>When set, the game renders a few frames, saves a PNG and exits (dev aid).</summary>
     public string? ScreenshotPath { get; set; }
 
-    /// <summary>When set, jumps straight into a fight (dev aid for screenshots).</summary>
-    public bool AutoStartFight { get; set; }
+    /// <summary>Screen the game opens on (dev aid for screenshots: title / fighters / fight).</summary>
+    public GameScreen InitialScreen { get; set; } = GameScreen.Title;
+
+    /// <summary>Fighter preselected in the menu (dev aid for screenshots).</summary>
+    public FighterKind InitialFighter { get; set; } = FighterKind.Andrey;
+
+    /// <summary>Difficulty preselected in the menu (dev aid for screenshots).</summary>
+    public BotDifficulty InitialDifficulty { get; set; } = BotDifficulty.Normal;
 
     public Game1()
     {
@@ -83,10 +90,11 @@ public class Game1 : Game
         };
         _fontSystem = new FontSystem(fontSettings);
         _fontSystem.AddFont(File.ReadAllBytes(fontPath));
-        _fontTitle = _fontSystem.GetFont(48);
-        _fontBig = _fontSystem.GetFont(24);
-        _fontName = _fontSystem.GetFont(19);
-        _fontSmall = _fontSystem.GetFont(15);
+        _fonts = new FontSet(
+            _fontSystem.GetFont(48),
+            _fontSystem.GetFont(24),
+            _fontSystem.GetFont(19),
+            _fontSystem.GetFont(15));
 
         _assets = new AssetStore(GraphicsDevice);
         _assets.Load();
@@ -94,6 +102,7 @@ public class Game1 : Game
         _renderer = new Renderer(GraphicsDevice, _assets);
         _background = new Background(GraphicsDevice);
         _hud = new Hud();
+        _resultOverlay = new ResultOverlay();
 
         _audio = new AudioEngine();
         _audio.Load();
@@ -101,10 +110,23 @@ public class Game1 : Game
         _input = new InputController();
         _session = new FightSession(_audio, _assets.LoadCutsceneFrames());
 
-        if (AutoStartFight)
+        _menuState.SelectedFighter = InitialFighter;
+        _menuState.Difficulty = InitialDifficulty;
+
+        _screen = InitialScreen;
+        switch (_screen)
         {
-            _session.Start(FighterKind.Andrey);
-            _screen = GameScreen.Fight;
+            case GameScreen.Fight:
+                _session.Start(_menuState.SelectedFighter, _menuState.Difficulty);
+                _menuScreen = CreateFighterSelect(focusStart: false);
+                break;
+            case GameScreen.FighterSelect:
+                _menuScreen = CreateFighterSelect(focusStart: false);
+                break;
+            default:
+                _screen = GameScreen.Title;
+                _menuScreen = new TitleScreen();
+                break;
         }
     }
 
@@ -117,29 +139,54 @@ public class Game1 : Game
         var mouse = Mouse.GetState();
         _input.Update(keyboard, mouse);
 
-        if (_screen == GameScreen.Menu)
-            HandleMenu(keyboard, mouse);
-        else
+        if (_screen == GameScreen.Fight)
             HandleFight(dt, keyboard, mouse);
+        else
+            HandleMenu(dt, keyboard, mouse);
 
         _prevKeyboard = keyboard;
         _prevMouse = mouse;
         base.Update(gameTime);
     }
 
-    private void HandleMenu(KeyboardState keyboard, MouseState mouse)
+    private void HandleMenu(float dt, KeyboardState keyboard, MouseState mouse)
     {
-        if (Click(mouse))
+        var input = new MenuInput
         {
-            var point = _scaler.ToVirtual(mouse.Position);
-            StartFight(point.X < Balance.ViewWidth / 2f ? FighterKind.Andrey : FighterKind.Pantera);
-            return;
-        }
+            Up = Pressed(keyboard, Keys.Up) || Pressed(keyboard, Keys.W),
+            Down = Pressed(keyboard, Keys.Down) || Pressed(keyboard, Keys.S),
+            Left = Pressed(keyboard, Keys.Left) || Pressed(keyboard, Keys.A),
+            Right = Pressed(keyboard, Keys.Right) || Pressed(keyboard, Keys.D),
+            Confirm = Pressed(keyboard, Keys.Enter) || Pressed(keyboard, Keys.Space),
+            Back = Pressed(keyboard, Keys.Escape),
+            MousePosition = _scaler.ToVirtual(mouse.Position),
+            MouseMoved = mouse.Position != _prevMouse.Position,
+            MouseClicked = Click(mouse),
+            FighterShortcut =
+                Pressed(keyboard, Keys.D1) || Pressed(keyboard, Keys.NumPad1) ? 1
+                : Pressed(keyboard, Keys.D2) || Pressed(keyboard, Keys.NumPad2) ? 2
+                : 0,
+        };
 
-        if (Pressed(keyboard, Keys.D1) || Pressed(keyboard, Keys.NumPad1))
-            StartFight(FighterKind.Andrey);
-        else if (Pressed(keyboard, Keys.D2) || Pressed(keyboard, Keys.NumPad2))
-            StartFight(FighterKind.Pantera);
+        var command = _menuScreen.Update(input, dt);
+        switch (command.Type)
+        {
+            case MenuCommandType.Play:
+                OpenFighterSelect(focusStart: true);
+                break;
+            case MenuCommandType.OpenFighters:
+                OpenFighterSelect(focusStart: false);
+                break;
+            case MenuCommandType.StartFight:
+                StartFight(command.Fighter, command.Difficulty);
+                break;
+            case MenuCommandType.BackToTitle:
+                GoToTitle();
+                break;
+            case MenuCommandType.Exit:
+                Exit();
+                break;
+        }
     }
 
     private void HandleFight(float dt, KeyboardState keyboard, MouseState mouse)
@@ -152,20 +199,39 @@ public class Game1 : Game
         if (!_session.Playing)
         {
             if (Pressed(keyboard, Keys.R) || Pressed(keyboard, Keys.Enter) || Click(mouse))
-                _session.Start(_session.Player.Kind);
+                StartFight(_session.Player.Kind, _session.Difficulty);
             else if (Pressed(keyboard, Keys.Escape))
-                _screen = GameScreen.Menu;
+                OpenFighterSelect(focusStart: false);
         }
         else if (Pressed(keyboard, Keys.Escape))
         {
-            _screen = GameScreen.Menu;
+            OpenFighterSelect(focusStart: false);
         }
     }
 
-    private void StartFight(FighterKind kind)
+    private FighterSelectScreen CreateFighterSelect(bool focusStart) =>
+        new(_menuState, focusStart);
+
+    private void OpenFighterSelect(bool focusStart)
     {
-        _ = _input.ConsumeCommands(); // discard any stale command queued in the menu
-        _session.Start(kind);
+        _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
+        _menuScreen = CreateFighterSelect(focusStart);
+        _screen = GameScreen.FighterSelect;
+    }
+
+    private void GoToTitle()
+    {
+        _ = _input.ConsumeCommands();
+        _menuScreen = new TitleScreen();
+        _screen = GameScreen.Title;
+    }
+
+    private void StartFight(FighterKind kind, BotDifficulty difficulty)
+    {
+        _ = _input.ConsumeCommands(); // discard stale menu commands
+        _menuState.SelectedFighter = kind;
+        _menuState.Difficulty = difficulty;
+        _session.Start(kind, difficulty);
         _screen = GameScreen.Fight;
     }
 
@@ -179,45 +245,47 @@ public class Game1 : Game
     {
         GraphicsDevice.Clear(Color.Black);
 
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+
+        // World layer: arena + fight (with screen shake), or the menu screens.
         float ox = 0f, oy = 0f;
         if (_screen == GameScreen.Fight)
         {
             ox = MathF.Sin(_session.Clock * 127f) * _session.Shake;
             oy = MathF.Cos(_session.Clock * 93f) * _session.Shake * 0.55f;
         }
-        var matrix = Matrix.CreateTranslation(ox, oy, 0f) * _scaler.Matrix;
+        var worldMatrix = Matrix.CreateTranslation(ox, oy, 0f) * _scaler.Matrix;
 
         _spriteBatch.Begin(
             blendState: BlendState.NonPremultiplied,
             samplerState: SamplerState.LinearClamp,
-            transformMatrix: matrix);
+            transformMatrix: worldMatrix);
         _background.Draw(_spriteBatch);
 
+        _renderer.Clock = _screen == GameScreen.Fight ? _session.Clock : time;
+        if (_screen == GameScreen.Fight)
+            _session.Draw(_spriteBatch, _renderer);
+        else
+            _menuScreen.Draw(_spriteBatch, _renderer, _fonts, time);
+        _spriteBatch.End();
+
+        // HUD and result stay stable while the world shakes.
         if (_screen == GameScreen.Fight)
         {
-            _renderer.Clock = _session.Clock;
-            _session.Draw(_spriteBatch, _renderer);
-        }
-        else
-        {
-            DrawMenu(_spriteBatch, (float)gameTime.TotalGameTime.TotalSeconds);
-        }
-        _spriteBatch.End();
+            _spriteBatch.Begin(
+                blendState: BlendState.NonPremultiplied,
+                samplerState: SamplerState.LinearClamp,
+                transformMatrix: _scaler.Matrix);
 
-        // HUD and UI are drawn without screen shake (but still scaled to the window).
-        _spriteBatch.Begin(
-            blendState: BlendState.NonPremultiplied,
-            samplerState: SamplerState.LinearClamp,
-            transformMatrix: matrix);
+            if (!_session.InCutscene)
+            {
+                _hud.Draw(_spriteBatch, _renderer, _fonts.Name, _fonts.Small, _session);
+                if (!_session.Playing)
+                    _resultOverlay.Draw(_spriteBatch, _renderer, _fonts, _session);
+            }
 
-        if (_screen == GameScreen.Fight && !_session.InCutscene)
-        {
-            _hud.Draw(_spriteBatch, _renderer, _fontName, _fontSmall, _session);
-            if (!_session.Playing)
-                DrawResult(_spriteBatch);
+            _spriteBatch.End();
         }
-
-        _spriteBatch.End();
 
         base.Draw(gameTime);
 
@@ -245,83 +313,5 @@ public class Game1 : Game
         using var stream = File.Create(path);
         texture.SaveAsPng(stream, width, height);
         Console.WriteLine($"screenshot saved: {path} ({width}x{height})");
-    }
-
-    private void DrawMenu(SpriteBatch spriteBatch, float time)
-    {
-        // Dim the arena behind the cards so the menu reads clearly.
-        _renderer.FillRect(spriteBatch,
-            new Rectangle(0, 0, Balance.ViewWidth, Balance.ViewHeight),
-            new Color(0x0b, 0x0d, 0x15) * 0.74f);
-
-        UI.ShadowedText(spriteBatch, _fontTitle, "ДВОРОВОЙ ФАЙТИНГ",
-            new Vector2(Balance.ViewWidth / 2f, 52), new Color(0xff, 0xf4, 0xdd), TextAlign.Center);
-        UI.Text(spriteBatch, _fontName, "ВЫБЕРИ БОЙЦА",
-            new Vector2(Balance.ViewWidth / 2f, 96), new Color(0xff, 0xcf, 0x53), TextAlign.Center);
-
-        var mouse = _scaler.ToVirtual(Mouse.GetState().Position);
-        float pulse = 0.5f + 0.5f * MathF.Sin(time * 4f);
-
-        var leftCard = new Rectangle(130, 112, 330, 290);
-        var rightCard = new Rectangle(500, 112, 330, 290);
-
-        DrawFighterCard(spriteBatch, leftCard, "andrey/walk", "Андрей", "Вонючие ноги · Метаморфоза", IsHover(leftCard, mouse), pulse);
-        DrawFighterCard(spriteBatch, rightCard, "pantera/walk", "Пантера", "Ушной луч · Призыв", IsHover(rightCard, mouse), pulse);
-
-        UI.Text(spriteBatch, _fontSmall, "1 / клик по карточке — выбрать бойца",
-            new Vector2(Balance.ViewWidth / 2f, 432), new Color(0xdf, 0xdc, 0xe8), TextAlign.Center);
-        UI.Text(spriteBatch, _fontSmall, "A/D — шаг · W — прыжок · S — присед · ЛКМ — удар · Z/X — спецухи",
-            new Vector2(Balance.ViewWidth / 2f, 456), new Color(0xbb, 0xb8, 0xca), TextAlign.Center);
-    }
-
-    private void DrawFighterCard(
-        SpriteBatch spriteBatch,
-        Rectangle card,
-        string animationKey,
-        string name,
-        string description,
-        bool hovered,
-        float pulse)
-    {
-        var fill = hovered ? new Color(0x28, 0x2d, 0x3f) : new Color(0x1d, 0x21, 0x30);
-        var border = hovered
-            ? Color.Lerp(new Color(0xff, 0xcf, 0x53), Color.White, pulse * 0.35f)
-            : new Color(0x5a, 0x5c, 0x6e);
-
-        _renderer.FillRect(spriteBatch, card, fill);
-        _renderer.DrawBorder(spriteBatch, card, border, hovered ? 3 : 2);
-
-        float centerX = card.X + card.Width / 2f;
-        float feetY = card.Y + card.Height - 82f;
-        _renderer.DrawSprite(spriteBatch, animationKey, 0, centerX, feetY, SpriteEffects.None, 1f, 185f);
-
-        var nameColor = hovered ? new Color(0xff, 0xcf, 0x53) : Color.White;
-        UI.Text(spriteBatch, _fontBig, name, new Vector2(centerX, card.Y + card.Height - 56), nameColor, TextAlign.Center);
-        UI.Text(spriteBatch, _fontSmall, description, new Vector2(centerX, card.Y + card.Height - 26),
-            new Color(0xdf, 0xdc, 0xe8), TextAlign.Center);
-    }
-
-    private static bool IsHover(Rectangle rectangle, Vector2 point) =>
-        point.X >= rectangle.X && point.X < rectangle.Right
-        && point.Y >= rectangle.Y && point.Y < rectangle.Bottom;
-
-    private void DrawResult(SpriteBatch spriteBatch)
-    {
-        bool win = _session.Winner != null && ReferenceEquals(_session.Winner, _session.Player);
-        string text = _session.Winner == null ? "НИЧЬЯ" : win ? "ПОБЕДА!" : "ПОРАЖЕНИЕ";
-        var color = _session.Winner == null
-            ? new Color(0xd1, 0xce, 0xd9)
-            : win ? new Color(0xff, 0xd9, 0x6c) : new Color(0xfc, 0x89, 0x78);
-
-        _renderer.FillRect(spriteBatch,
-            new Rectangle(0, 0, Balance.ViewWidth, Balance.ViewHeight),
-            new Color(0x08, 0x0a, 0x12) * 0.62f);
-
-        var panel = new Rectangle(200, 150, 560, 170);
-        _renderer.DrawPanel(spriteBatch, panel, new Color(0x17, 0x1a, 0x26) * 0.97f, new Color(0x64, 0x65, 0x78), 3);
-
-        UI.ShadowedText(spriteBatch, _fontTitle, text, new Vector2(Balance.ViewWidth / 2f, 208), color, TextAlign.Center);
-        UI.Text(spriteBatch, _fontSmall, "R / Enter / клик — Реванш      Esc — Выбор бойца",
-            new Vector2(Balance.ViewWidth / 2f, 278), Color.White, TextAlign.Center);
     }
 }

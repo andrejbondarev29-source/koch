@@ -3,8 +3,17 @@ namespace DvorFight.Core;
 /// <summary>Top-level screens of the game.</summary>
 public enum GameScreen
 {
-    Menu,
+    Title,
+    FighterSelect,
     Fight,
+}
+
+/// <summary>Bot difficulty presets selectable on the fighter-select screen.</summary>
+public enum BotDifficulty
+{
+    Easy,
+    Normal,
+    Hard,
 }
 
 /// <summary>The two playable characters.</summary>

@@ -21,6 +21,12 @@ public sealed class FightSession
     public bool Playing { get; private set; }
     public IAudioEngine Audio { get; }
 
+    /// <summary>Bot difficulty chosen on the fighter-select screen.</summary>
+    public BotDifficulty Difficulty { get; private set; } = BotDifficulty.Normal;
+
+    /// <summary>Behaviour preset of the current fight (owned by the bot controller).</summary>
+    public BotDifficultyProfile BotProfile => _bot.Profile;
+
     public List<Projectile> Projectiles { get; } = new();
     public List<Spark> Sparks { get; } = new();
 
@@ -46,10 +52,11 @@ public sealed class FightSession
         _morphFrames = morphFrames;
     }
 
-    public void Start(FighterKind playerKind)
+    public void Start(FighterKind playerKind, BotDifficulty difficulty = BotDifficulty.Normal)
     {
-        Player = playerKind == FighterKind.Andrey ? new Andrey() : new Pantera();
-        Bot = playerKind == FighterKind.Andrey ? new Pantera() : new Andrey();
+        Difficulty = difficulty;
+        Player = FighterFactory.Create(playerKind);
+        Bot = FighterFactory.Create(FighterFactory.OpponentFor(playerKind));
         Player.Reset(240f, Face.Right);
         Bot.Reset(720f, Face.Left);
         Projectiles.Clear();
@@ -61,6 +68,7 @@ public sealed class FightSession
         Playing = true;
         Winner = null;
         ActiveCutscene = null;
+        _bot.SetDifficulty(difficulty);
         _bot.Reset();
     }
 

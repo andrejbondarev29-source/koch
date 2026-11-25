@@ -92,6 +92,23 @@ public static class Balance
     public const float AiApproachDistance = 88f;
     public const float AiMeleeDistance = 115f;
 
+    // --- AI difficulty multipliers (applied on top of the base AI values above) ---
+    // Лёгкий: бот думает реже, редко рискует спецухами и бьёт только в упор.
+    public const float BotEasyThinkScale = 1.60f;
+    public const float BotEasySpecialScale = 0.50f;
+    public const float BotEasyJumpScale = 0.50f;
+    public const float BotEasyMeleeRangeScale = 0.80f;
+    // Нормальный: эталонное поведение исходной игры (все множители 1.0).
+    public const float BotNormalThinkScale = 1.00f;
+    public const float BotNormalSpecialScale = 1.00f;
+    public const float BotNormalJumpScale = 1.00f;
+    public const float BotNormalMeleeRangeScale = 1.00f;
+    // Жёсткий: быстрые решения, агрессивные спецухи, удар чуть дальше.
+    public const float BotHardThinkScale = 0.60f;
+    public const float BotHardSpecialScale = 1.35f;
+    public const float BotHardJumpScale = 1.30f;
+    public const float BotHardMeleeRangeScale = 1.15f;
+
     // --- Spark effect ---
     public const float SparkLifetime = 0.13f;
     public const int SparkRays = 7;
