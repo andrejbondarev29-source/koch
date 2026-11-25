@@ -36,8 +36,8 @@ public abstract class Fighter : Entity
 
     public bool IsBusy => Action != MoveType.None;
     public bool IsMorphed => MorphTimer > 0f;
-    public string GroupKey => Kind == FighterKind.Andrey ? "andrey" : "pantera";
-    public string Title => Kind == FighterKind.Andrey ? "Андрей" : "Пантера";
+    public virtual string GroupKey => Kind == FighterKind.Andrey ? "andrey" : "pantera";
+    public virtual string Title => Kind == FighterKind.Andrey ? "Андрей" : "Пантера";
 
     /// <summary>Whether the character's source sprites are drawn facing right.</summary>
     public abstract bool SpritesFaceRight { get; }

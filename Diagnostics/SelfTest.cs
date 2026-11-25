@@ -1,8 +1,11 @@
+using DvorFight.AI;
 using DvorFight.Audio;
 using DvorFight.Combat;
 using DvorFight.Config;
 using DvorFight.Core;
 using DvorFight.Input;
+using DvorFight.Rendering;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 
@@ -11,7 +14,8 @@ namespace DvorFight.Diagnostics;
 /// <summary>
 /// Headless smoke test: runs the real gameplay code (no window, no audio device) for
 /// a few simulated fights and asserts that damage, specials and metamorphosis work.
-/// Run with: <c>DvorFight.exe --selftest</c>.
+/// Also exercises the menu state machines and the bot difficulty profiles without any
+/// graphics device. Run with: <c>DvorFight.exe --selftest</c>.
 /// </summary>
 public static class SelfTest
 {
@@ -21,6 +25,7 @@ public static class SelfTest
         int failures = 0;
         failures += Scenario("Андрей vs бот", FighterKind.Andrey);
         failures += Scenario("Пантера vs бот", FighterKind.Pantera);
+        failures += MenuAndDifficultyChecks();
 
         Console.WriteLine(failures == 0 ? "RESULT: PASS" : $"RESULT: FAIL ({failures} assertion(s))");
         return failures == 0 ? 0 : 1;
@@ -92,6 +97,114 @@ public static class SelfTest
             failures++;
         }
 
+        return failures;
+    }
+
+    /// <summary>
+    /// Drives the menu screens with synthetic input and checks the difficulty profiles.
+    /// No graphics device is needed: menu Update only touches plain state.
+    /// </summary>
+    private static int MenuAndDifficultyChecks()
+    {
+        int failures = 0;
+        int checks = 0;
+        var origin = new Vector2(-100f, -100f);
+
+        void Expect(bool condition, string message)
+        {
+            checks++;
+            if (condition)
+                return;
+            Console.WriteLine($"          FAIL: {message}");
+            failures++;
+        }
+
+        // Fighter catalog is data-driven and points at real on-disk animations.
+        Expect(FighterCatalog.All.Count >= 2, "в каталоге меньше двух бойцов");
+        foreach (var profile in FighterCatalog.All)
+        {
+            string preview = Path.Combine(AppContext.BaseDirectory, "Content", "Sprites", profile.IdleAnimation, "0.png");
+            Expect(File.Exists(preview), $"нет анимации стойки для {profile.Name}: {profile.IdleAnimation}");
+            Expect(profile.SpecialZDetail.Contains(Balance.SpecialZCooldown.ToString("0.0")),
+                $"откат Z для {profile.Name} не взят из Balance");
+        }
+
+        // Difficulty profiles must be ordered from softer to harsher.
+        var easy = BotDifficultyProfile.For(BotDifficulty.Easy);
+        var normal = BotDifficultyProfile.For(BotDifficulty.Normal);
+        var hard = BotDifficultyProfile.For(BotDifficulty.Hard);
+        Expect(easy.ThinkScale > normal.ThinkScale && normal.ThinkScale > hard.ThinkScale,
+            "сложности не меняют скорость принятия решений");
+        Expect(easy.SpecialScale < normal.SpecialScale && normal.SpecialScale < hard.SpecialScale,
+            "сложности не меняют частоту спецух");
+        Expect(easy.MeleeRangeScale < hard.MeleeRangeScale,
+            "сложности не меняют дистанцию удара");
+        Expect(DifficultyCatalog.All.Count == 3
+               && !string.IsNullOrWhiteSpace(DifficultyCatalog.For(BotDifficulty.Hard).Title)
+               && !string.IsNullOrWhiteSpace(DifficultyCatalog.For(BotDifficulty.Hard).Description),
+            "у сложности нет подписи/описания для меню");
+
+        // Difficulty reaches the fight session and its bot controller. BotProfile is
+        // read from BotController itself, so this fails if SetDifficulty is not wired.
+        var session = new FightSession(new NullAudioEngine(), Array.Empty<Texture2D>());
+        session.Start(FighterKind.Andrey, BotDifficulty.Hard);
+        Expect(session.Difficulty == BotDifficulty.Hard, "в бой не передаётся выбранная сложность");
+        Expect(session.BotProfile.Difficulty == BotDifficulty.Hard, "бот не получил профиль сложности");
+        Expect(session.BotProfile.ThinkScale < normal.ThinkScale, "бот не применяет быстрый темп «Жёсткого»");
+
+        // Title screen: Down + Enter -> fighter select; Enter -> play; two Downs + Enter -> exit.
+        var title = new TitleScreen();
+        var next = title.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "навигация по заголовку сразу запускает экран");
+        next = title.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.OpenFighters, "«Бойцы / Характеристики» не открывает выбор бойца");
+
+        title = new TitleScreen();
+        next = title.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.Play, "«Играть» не запускает экран выбора");
+
+        title = new TitleScreen();
+        title.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        title.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        next = title.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.Exit, "«Выход» не завершает игру");
+
+        // Fighter select: Right picks the second fighter, Down moves focus to difficulty,
+        // Right switches Normal -> Hard, Enter starts that exact matchup.
+        var state = new MenuState();
+        var select = new FighterSelectScreen(state, focusStart: false);
+        select.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        Expect(state.SelectedFighter == FighterKind.Pantera, "стрелка вправо не выбирает второго бойца");
+        select.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        select.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        Expect(state.Difficulty == BotDifficulty.Hard, "стрелка вправо не переключает сложность");
+        next = select.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight, "Enter не начинает бой со экрана выбора");
+        Expect(next.Fighter == FighterKind.Pantera && next.Difficulty == BotDifficulty.Hard,
+            "в команду старта не попали выбранные боец/сложность");
+
+        // «Играть» opens the screen with the start button focused, so Enter starts immediately.
+        select = new FighterSelectScreen(state, focusStart: true);
+        next = select.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight, "фокус на кнопке старта не начинает бой по Enter");
+        next = select.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.BackToTitle, "Esc не возвращает на стартовый экран");
+
+        // Mouse path: click a title button, click the second card, a difficulty pill and Start.
+        title = new TitleScreen();
+        next = title.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(480, 226) }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.Play, "клик по «Играть» не запускает игру");
+
+        state = new MenuState();
+        select = new FighterSelectScreen(state, focusStart: false);
+        select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(338, 209) }, 1f / 60f);
+        Expect(state.SelectedFighter == FighterKind.Pantera, "клик по карточке не выбирает бойца");
+        select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(360, 379) }, 1f / 60f);
+        Expect(state.Difficulty == BotDifficulty.Hard, "клик по кнопке сложности не переключает сложность");
+        next = select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(694, 383) }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight, "клик по «Начать бой» не запускает бой");
+
+        Console.WriteLine($"[Меню и сложности] проверок={checks} провалов={failures}");
         return failures;
     }
 }
