@@ -47,10 +47,16 @@ public static class UI
         spriteBatch.DrawString(font, text, target, color);
     }
 
-    private static Vector2 Align(Vector2 position, Vector2 size, TextAlign align) => align switch
+    private static Vector2 Align(Vector2 position, Vector2 size, TextAlign align)
     {
-        TextAlign.Center => new Vector2(position.X - size.X / 2f, position.Y - size.Y / 2f),
-        TextAlign.Right => new Vector2(position.X - size.X, position.Y),
-        _ => position,
-    };
+        var target = align switch
+        {
+            TextAlign.Center => new Vector2(position.X - size.X / 2f, position.Y - size.Y / 2f),
+            TextAlign.Right => new Vector2(position.X - size.X, position.Y),
+            _ => position,
+        };
+
+        // Snap to whole pixels: fractional glyph positions get bilinearly blurred.
+        return new Vector2(MathF.Round(target.X), MathF.Round(target.Y));
+    }
 }

@@ -39,6 +39,13 @@ public class Game1 : Game
     private GameScreen _screen = GameScreen.Menu;
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;
+    private int _framesDrawn;
+
+    /// <summary>When set, the game renders a few frames, saves a PNG and exits (dev aid).</summary>
+    public string? ScreenshotPath { get; set; }
+
+    /// <summary>When set, jumps straight into a fight (dev aid for screenshots).</summary>
+    public bool AutoStartFight { get; set; }
 
     public Game1()
     {
@@ -61,11 +68,20 @@ public class Game1 : Game
         _spriteBatch = new SpriteBatch(GraphicsDevice);
 
         string fontDir = Path.Combine(AppContext.BaseDirectory, "Content", "Fonts");
-        string fontPath = File.Exists(Path.Combine(fontDir, "segoeui.ttf"))
-            ? Path.Combine(fontDir, "segoeui.ttf")
-            : Path.Combine(fontDir, "arial.ttf");
+        string fontPath = File.Exists(Path.Combine(fontDir, "segoeuib.ttf"))
+            ? Path.Combine(fontDir, "segoeuib.ttf")
+            : File.Exists(Path.Combine(fontDir, "segoeui.ttf"))
+                ? Path.Combine(fontDir, "segoeui.ttf")
+                : Path.Combine(fontDir, "arial.ttf");
 
-        _fontSystem = new FontSystem(new FontSystemSettings());
+        // PremultiplyAlpha=false keeps the glyph atlas in straight alpha, matching the
+        // NonPremultiplied blend state used for the straight-alpha PNG sprites. Without
+        // this the text is multiplied by alpha twice and looks washed out / faded.
+        var fontSettings = new FontSystemSettings
+        {
+            PremultiplyAlpha = false,
+        };
+        _fontSystem = new FontSystem(fontSettings);
         _fontSystem.AddFont(File.ReadAllBytes(fontPath));
         _fontTitle = _fontSystem.GetFont(48);
         _fontBig = _fontSystem.GetFont(24);
@@ -84,6 +100,12 @@ public class Game1 : Game
 
         _input = new InputController();
         _session = new FightSession(_audio, _assets.LoadCutsceneFrames());
+
+        if (AutoStartFight)
+        {
+            _session.Start(FighterKind.Andrey);
+            _screen = GameScreen.Fight;
+        }
     }
 
     protected override void Update(GameTime gameTime)
@@ -198,6 +220,31 @@ public class Game1 : Game
         _spriteBatch.End();
 
         base.Draw(gameTime);
+
+        if (ScreenshotPath != null && ++_framesDrawn >= 90)
+        {
+            CaptureScreenshot(ScreenshotPath);
+            Exit();
+        }
+    }
+
+    private void CaptureScreenshot(string path)
+    {
+        int width = GraphicsDevice.PresentationParameters.BackBufferWidth;
+        int height = GraphicsDevice.PresentationParameters.BackBufferHeight;
+        var pixels = new Color[width * height];
+        GraphicsDevice.GetBackBufferData(pixels);
+
+        using var texture = new Texture2D(GraphicsDevice, width, height);
+        texture.SetData(pixels);
+
+        string? dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        using var stream = File.Create(path);
+        texture.SaveAsPng(stream, width, height);
+        Console.WriteLine($"screenshot saved: {path} ({width}x{height})");
     }
 
     private void DrawMenu(SpriteBatch spriteBatch, float time)
@@ -222,9 +269,9 @@ public class Game1 : Game
         DrawFighterCard(spriteBatch, rightCard, "pantera/walk", "Пантера", "Ушной луч · Призыв", IsHover(rightCard, mouse), pulse);
 
         UI.Text(spriteBatch, _fontSmall, "1 / клик по карточке — выбрать бойца",
-            new Vector2(Balance.ViewWidth / 2f, 432), new Color(0xd1, 0xce, 0xd9), TextAlign.Center);
+            new Vector2(Balance.ViewWidth / 2f, 432), new Color(0xdf, 0xdc, 0xe8), TextAlign.Center);
         UI.Text(spriteBatch, _fontSmall, "A/D — шаг · W — прыжок · S — присед · ЛКМ — удар · Z/X — спецухи",
-            new Vector2(Balance.ViewWidth / 2f, 456), new Color(0x8f, 0x8c, 0x9d), TextAlign.Center);
+            new Vector2(Balance.ViewWidth / 2f, 456), new Color(0xbb, 0xb8, 0xca), TextAlign.Center);
     }
 
     private void DrawFighterCard(
@@ -251,7 +298,7 @@ public class Game1 : Game
         var nameColor = hovered ? new Color(0xff, 0xcf, 0x53) : Color.White;
         UI.Text(spriteBatch, _fontBig, name, new Vector2(centerX, card.Y + card.Height - 56), nameColor, TextAlign.Center);
         UI.Text(spriteBatch, _fontSmall, description, new Vector2(centerX, card.Y + card.Height - 26),
-            new Color(0xd1, 0xce, 0xd9), TextAlign.Center);
+            new Color(0xdf, 0xdc, 0xe8), TextAlign.Center);
     }
 
     private static bool IsHover(Rectangle rectangle, Vector2 point) =>
