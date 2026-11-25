@@ -27,18 +27,23 @@ public static class UI
         spriteBatch.DrawString(font, text, Align(position, font.MeasureString(text), align), color);
     }
 
-    /// <summary>Draws text with a soft drop shadow, for titles sitting on busy backgrounds.</summary>
+    /// <summary>
+    /// Draws text with a soft drop shadow, for titles sitting on busy backgrounds.
+    /// Keep <paramref name="shadowOffset"/> small (1px) for small fonts so the
+    /// glyphs do not visually smear into a double copy.
+    /// </summary>
     public static void ShadowedText(
         SpriteBatch spriteBatch,
         DynamicSpriteFont font,
         string text,
         Vector2 position,
         Color color,
-        TextAlign align = TextAlign.Left)
+        TextAlign align = TextAlign.Left,
+        float shadowOffset = 2f)
     {
         var size = font.MeasureString(text);
         var target = Align(position, size, align);
-        spriteBatch.DrawString(font, text, target + new Vector2(2f, 2f), Shadow);
+        spriteBatch.DrawString(font, text, target + new Vector2(shadowOffset, shadowOffset), Shadow);
         spriteBatch.DrawString(font, text, target, color);
     }
 

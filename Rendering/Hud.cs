@@ -20,8 +20,8 @@ public sealed class Hud
         DrawHpBar(spriteBatch, renderer, 28f, session.Player, rightAnchored: false);
         DrawHpBar(spriteBatch, renderer, 572f, session.Bot, rightAnchored: true);
 
-        UI.ShadowedText(spriteBatch, nameFont, $"{session.Player.Title} · ТЫ", new Vector2(28, 32), Color.White, TextAlign.Left);
-        UI.ShadowedText(spriteBatch, nameFont, $"{session.Bot.Title} · БОТ", new Vector2(932, 32), Color.White, TextAlign.Right);
+        UI.ShadowedText(spriteBatch, nameFont, $"{session.Player.Title} · ТЫ", new Vector2(28, 32), Color.White, TextAlign.Left, 1f);
+        UI.ShadowedText(spriteBatch, nameFont, $"{session.Bot.Title} · БОТ", new Vector2(932, 32), Color.White, TextAlign.Right, 1f);
 
         string z = session.Player.SpecialCooldown > 0f
             ? session.Player.SpecialCooldown.ToString("0.0")

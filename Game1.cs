@@ -29,6 +29,7 @@ public class Game1 : Game
 
     private AssetStore _assets = null!;
     private Renderer _renderer = null!;
+    private readonly ScreenScaler _scaler = new();
     private Background _background = null!;
     private Hud _hud = null!;
     private AudioEngine _audio = null!;
@@ -88,6 +89,7 @@ public class Game1 : Game
     protected override void Update(GameTime gameTime)
     {
         float dt = Math.Min(0.035f, (float)gameTime.ElapsedGameTime.TotalSeconds);
+        _scaler.Update(Window.ClientBounds);
 
         var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
@@ -107,7 +109,8 @@ public class Game1 : Game
     {
         if (Click(mouse))
         {
-            StartFight(mouse.X < Balance.ViewWidth / 2 ? FighterKind.Andrey : FighterKind.Pantera);
+            var point = _scaler.ToVirtual(mouse.Position);
+            StartFight(point.X < Balance.ViewWidth / 2f ? FighterKind.Andrey : FighterKind.Pantera);
             return;
         }
 
@@ -152,7 +155,7 @@ public class Game1 : Game
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(new Color(0x12, 0x14, 0x1c));
+        GraphicsDevice.Clear(Color.Black);
 
         float ox = 0f, oy = 0f;
         if (_screen == GameScreen.Fight)
@@ -160,7 +163,7 @@ public class Game1 : Game
             ox = MathF.Sin(_session.Clock * 127f) * _session.Shake;
             oy = MathF.Cos(_session.Clock * 93f) * _session.Shake * 0.55f;
         }
-        var matrix = Matrix.CreateTranslation(ox, oy, 0f);
+        var matrix = Matrix.CreateTranslation(ox, oy, 0f) * _scaler.Matrix;
 
         _spriteBatch.Begin(
             blendState: BlendState.NonPremultiplied,
@@ -179,10 +182,11 @@ public class Game1 : Game
         }
         _spriteBatch.End();
 
-        // HUD and UI are drawn without screen shake.
+        // HUD and UI are drawn without screen shake (but still scaled to the window).
         _spriteBatch.Begin(
             blendState: BlendState.NonPremultiplied,
-            samplerState: SamplerState.LinearClamp);
+            samplerState: SamplerState.LinearClamp,
+            transformMatrix: matrix);
 
         if (_screen == GameScreen.Fight && !_session.InCutscene)
         {
@@ -205,10 +209,10 @@ public class Game1 : Game
 
         UI.ShadowedText(spriteBatch, _fontTitle, "ДВОРОВОЙ ФАЙТИНГ",
             new Vector2(Balance.ViewWidth / 2f, 52), new Color(0xff, 0xf4, 0xdd), TextAlign.Center);
-        UI.ShadowedText(spriteBatch, _fontSmall, "— ВЫБЕРИ БОЙЦА —",
-            new Vector2(Balance.ViewWidth / 2f, 94), new Color(0xff, 0xcf, 0x53), TextAlign.Center);
+        UI.Text(spriteBatch, _fontName, "ВЫБЕРИ БОЙЦА",
+            new Vector2(Balance.ViewWidth / 2f, 96), new Color(0xff, 0xcf, 0x53), TextAlign.Center);
 
-        var mouse = Mouse.GetState();
+        var mouse = _scaler.ToVirtual(Mouse.GetState().Position);
         float pulse = 0.5f + 0.5f * MathF.Sin(time * 4f);
 
         var leftCard = new Rectangle(130, 112, 330, 290);
@@ -217,9 +221,9 @@ public class Game1 : Game
         DrawFighterCard(spriteBatch, leftCard, "andrey/walk", "Андрей", "Вонючие ноги · Метаморфоза", IsHover(leftCard, mouse), pulse);
         DrawFighterCard(spriteBatch, rightCard, "pantera/walk", "Пантера", "Ушной луч · Призыв", IsHover(rightCard, mouse), pulse);
 
-        UI.ShadowedText(spriteBatch, _fontSmall, "1 / клик по карточке — выбрать бойца",
+        UI.Text(spriteBatch, _fontSmall, "1 / клик по карточке — выбрать бойца",
             new Vector2(Balance.ViewWidth / 2f, 432), new Color(0xd1, 0xce, 0xd9), TextAlign.Center);
-        UI.ShadowedText(spriteBatch, _fontSmall, "A/D — шаг · W — прыжок · S — присед · ЛКМ — удар · Z/X — спецухи",
+        UI.Text(spriteBatch, _fontSmall, "A/D — шаг · W — прыжок · S — присед · ЛКМ — удар · Z/X — спецухи",
             new Vector2(Balance.ViewWidth / 2f, 456), new Color(0x8f, 0x8c, 0x9d), TextAlign.Center);
     }
 
@@ -245,14 +249,14 @@ public class Game1 : Game
         _renderer.DrawSprite(spriteBatch, animationKey, 0, centerX, feetY, SpriteEffects.None, 1f, 185f);
 
         var nameColor = hovered ? new Color(0xff, 0xcf, 0x53) : Color.White;
-        UI.ShadowedText(spriteBatch, _fontBig, name, new Vector2(centerX, card.Y + card.Height - 56), nameColor, TextAlign.Center);
+        UI.Text(spriteBatch, _fontBig, name, new Vector2(centerX, card.Y + card.Height - 56), nameColor, TextAlign.Center);
         UI.Text(spriteBatch, _fontSmall, description, new Vector2(centerX, card.Y + card.Height - 26),
             new Color(0xd1, 0xce, 0xd9), TextAlign.Center);
     }
 
-    private static bool IsHover(Rectangle rectangle, MouseState mouse) =>
-        mouse.X >= rectangle.X && mouse.X < rectangle.Right
-        && mouse.Y >= rectangle.Y && mouse.Y < rectangle.Bottom;
+    private static bool IsHover(Rectangle rectangle, Vector2 point) =>
+        point.X >= rectangle.X && point.X < rectangle.Right
+        && point.Y >= rectangle.Y && point.Y < rectangle.Bottom;
 
     private void DrawResult(SpriteBatch spriteBatch)
     {
@@ -270,7 +274,7 @@ public class Game1 : Game
         _renderer.DrawPanel(spriteBatch, panel, new Color(0x17, 0x1a, 0x26) * 0.97f, new Color(0x64, 0x65, 0x78), 3);
 
         UI.ShadowedText(spriteBatch, _fontTitle, text, new Vector2(Balance.ViewWidth / 2f, 208), color, TextAlign.Center);
-        UI.ShadowedText(spriteBatch, _fontSmall, "R / Enter / клик — Реванш      Esc — Выбор бойца",
+        UI.Text(spriteBatch, _fontSmall, "R / Enter / клик — Реванш      Esc — Выбор бойца",
             new Vector2(Balance.ViewWidth / 2f, 278), Color.White, TextAlign.Center);
     }
 }
