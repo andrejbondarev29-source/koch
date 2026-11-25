@@ -1,0 +1,212 @@
+# AGENTS.md — инженерный регламент DvorFight
+
+Единый обязательный гайд для любых ИИ-агентов (DeepSeek Harness, OpenAI Codex, Cline и др.),
+которые работают с этим репозиторием. Читается **целиком до первой команды**.
+
+- Пользовательская документация: `README.md`.
+- Этот файл — процесс, карта кода и жёсткие инварианты.
+- `.clinerules` — автоматически читаемая Cline копия; при правке AGENTS.md обнови и её.
+- Прямое явное указание пользователя важнее этого регламента; любое отступление — озвучить в финале.
+
+## 0. Нерушимые правила (TL;DR)
+
+1. **Никаких игровых чисел в UI и бойцах.** Урон, HP, скорости, откаты, дистанции и
+   вероятности AI живут только в `Config/Balance.cs` и профилях `AI/BotDifficultyProfile.cs`.
+2. **Сборка без предупреждений:** `dotnet build -c Release` → 0 ошибок, 0 предупреждений.
+3. **Любое изменение UI проверяется глазами** по PNG из `--screenshot`; текст не должен
+   наезжать, обрезаться или мылиться.
+4. **Git только чистый:** `bin/`, `obj/`, временные кропы не коммитятся; скриншоты,
+   на которые ссылается README, — обязательно в индексе.
+5. **`main` не трогать напрямую.** Работать в ветке, пушить ветку, не пушить `main`.
+6. В конце задачи актуализировать `README.md` и, если добавились модули/правила, `AGENTS.md`
+   + `.clinerules`.
+
+## 1. Контекст и стек
+
+- **C# / .NET 8**, `MonoGame.Framework.DesktopGL` 3.8.3, `FontStashSharp.MonoGame`.
+- Виртуальный холст **960×480**, масштабируется под окно через `Rendering/ScreenScaler.cs`
+  (letterbox); вся вёрстка меню считается в этих координатах.
+- **Content Pipeline (MGCB) не используется.** Текстуры грузятся в рантайме
+  (`Texture2D.FromStream`) из `Content/Sprites` через `Rendering/AssetStore.cs`;
+  шрифты — из `Content/Fonts`. Новые PNG/TTF просто кладутся в `Content/**`,
+  csproj копирует их в выходную папку.
+- **Звук процедурный** (`Audio/AudioEngine.cs`, осцилляторы + шум). Аудиофайлы не добавлять
+  без отдельного требования.
+- Windows x64. Если `dotnet` не в PATH, SDK лежит в `%LOCALAPPDATA%\Microsoft\dotnet`;
+  `build.cmd` / `run.cmd` сами выставляют `DOTNET_ROOT`.
+- Git-корень и корень проекта — каталог `DvorFight/` (remote `koch`).
+- Язык интерфейса и документации — русский; идентификаторы кода — английские.
+
+## 2. Карта репозитория
+
+Сначала прочитать этот файл и `README.md`, затем открывать **только нужные** модули.
+`bin/`, `obj/` и `Assets/` не читать — там артефакты и исходные ассеты.
+
+| Задача | Где смотреть |
+|---|---|
+| Баланс, урон, HP, скорости, откаты, дистанции | `Config/Balance.cs` — единственный источник чисел |
+| Сложности AI, поведение бота | `AI/BotDifficultyProfile.cs` (множители), `AI/BotController.cs` (логика), `Core/Enums.cs` (`BotDifficulty`) |
+| Бойцы, физика, атаки, спецухи | `Domain/Fighter.cs`, `Domain/Andrey.cs`, `Domain/Pantera.cs`, `Domain/Projectile.cs`, `Domain/Shoe.cs`, `Domain/Dancer.cs`, `Domain/Spark.cs` |
+| Создание бойцов и ростер | `Domain/FighterFactory.cs`; данные карточек — `Rendering/FighterCatalog.cs` |
+| Бой как сессия (hit-stop, KO, cutscene, сложность) | `Combat/FightSession.cs` |
+| Экраны меню | `Rendering/TitleScreen.cs`, `Rendering/FighterSelectScreen.cs`, `Rendering/ResultOverlay.cs` |
+| Общие основы меню | `Rendering/MenuScreen.cs`, `MenuInput.cs`, `MenuCommand.cs`, `MenuState.cs`, `MenuTheme.cs`, `FontSet.cs`, `Rendering/DifficultyCatalog.cs` |
+| HUD, шрифты, выравнивание | `Rendering/Hud.cs`, `Rendering/UI.cs`, `Rendering/FontSet.cs` |
+| Переходы экранов, окно, game loop | `Game1.cs`; флаги запуска — `Program.cs` |
+| Рендер/ассеты/фон/кат-сцена | `Rendering/Renderer.cs`, `AssetStore.cs`, `Background.cs`, `SpriteAnimation.cs`, `MorphCutscene.cs` |
+| Ввод боя | `Input/InputController.cs` |
+| Автотесты | `Diagnostics/SelfTest.cs` |
+| Пользовательская документация | `README.md`, `screenshots/` |
+
+Примечание: `FighterCatalog` — это UI-данные карточек (имена, описания, превью-анимации),
+поэтому он лежит в `Rendering/`, а не в `Domain/`. Доменный код о нём не знает.
+
+### Работа с числами и данными
+
+- Добавляешь стат/откат/урон — сначала `Balance.cs`, затем используй константу.
+- Панель статов и карточки форматируют значения из `Balance` в рантайме; строки меню
+  собирать только из констант (например, `Balance.ShoeCount`, а не литерал `2`).
+- Названия и описания сложностей — `Rendering/DifficultyCatalog.cs`; поведение — в
+  `BotDifficultyProfile`. AI-слой не хранит UI-строки.
+- Новая сложность: `BotDifficulty` → множители в `Balance` + профиль
+  `BotDifficultyProfile` + подпись `DifficultyCatalog` (и проверка в самотесте).
+- Новый боец: наследник `Fighter` (при необходимости override `Title`/`GroupKey`/
+  `SpritesFaceRight`) → кейс в `FighterFactory` → запись в `FighterCatalog` → анимации в
+  `Content/Sprites`. Меню подхватит карточку автоматически; при >2 бойцах работает
+  листание стрелками.
+
+## 3. Инварианты кода и визуала
+
+### Архитектура
+
+- `Game1.cs` — тонкая оболочка: окно, цикл, переходы. Логику экранов не писать в нём.
+- Экраны меню — отдельные классы-наследники `MenuScreen` в `Rendering/`.
+  `Update` возвращает `MenuCommand`, а не мутирует сцену; ввод — `MenuInput` (чистые данные),
+  поэтому навигация должна оставаться тестируемой headless, без `GraphicsDevice`.
+- `MenuInput` заполняется только в `Game1` (edge-trigger + виртуальные координаты мыши),
+  экраны не вызывают MonoGame Input напрямую.
+- Доменный слой (`Domain`, `Combat`, `AI`, `Config`) не должен зависеть от меню.
+  Отрисовка сущностей — через `Draw(..., SpriteBatch, Renderer)`.
+- Бойцы создаются через `FighterFactory.Create`, а не тернарниками в `FightSession`.
+- Все числа сложности передаются через `FightSession.Start(kind, difficulty)` и сохраняются
+  на реванш; HUD/результат показывают сложность.
+- Никаких новых тяжёлых зависимостей и Content Pipeline без явной необходимости.
+- `Nullable` включён: новые предупреждения компилятора недопустимы, подавлять их нельзя.
+
+### Шрифты и вёрстка (прошлые баги)
+
+- `FontSystemSettings { PremultiplyAlpha = false }` — иначе текст блёклый/двойной.
+  Не менять без причины и проверки скриншотом.
+- Текст позиционировать **в целых пикселях**; `UI.Text`/`UI.ShadowedText` уже округляют
+  координаты. Не рисовать текст с дробными координатами вручную.
+- Малым шрифтам (`Small`) не давать большой shadow-offset: 1 px, иначе глифы «смазываются».
+- Размеры шрифтов — через `FontSet` (48 / 24 / 19 / 15). Новый размер добавлять в `FontSet`,
+  а не создавать `GetFont(...)` по месту.
+- HUD: имена бойцов рисуются сверху (`y = 16`), HP-бары начинаются с `y = 40`;
+  текст не должен ложиться на полоски. Любая правка HUD проверяется `--screen fight`.
+- Вся вёрстка обязана влезать в 960×480 без обрезки; мышь переводится в виртуальные
+  координаты только через `ScreenScaler.ToVirtual`.
+- Палитра и состояния фокуса/наведения — из `Rendering/MenuTheme.cs`; не плодить локальные
+  цвета, если подходит тема.
+- Интерфейс проверять при 960×480 (скриншот из backbuffer): шрифты чёткие, ничего не съехало.
+
+### Git-гигиена
+
+- `bin/`, `obj/`, `.vs/`, `*.user` не коммитить (уже в `.gitignore`; не форсить `-f`).
+- Временные отладочные кропы/зумы (`_zoom_*.png` и подобные) удалять до коммита или
+  складывать вне репозитория.
+- Скриншоты, на которые ссылается `README.md`, должны быть добавлены в индекс
+  (`screenshots/`); если менял UI — обнови PNG и закоммить их.
+- Не коммитить секреты, токены, абсолютные пользовательские пути, чужие файлы.
+- Один коммит — одна логичная задача. Стиль сообщений как в истории:
+  `feat(menu): ...`, `fix(ui): ...`, `docs(agents): ...` (императив, по-русски).
+- Не переписывать опубликованную историю без просьбы. Не пушить `main`.
+- Незавершённые/чужие изменения не смешивать со своей задачей.
+
+## 4. Обязательный пайплайн задачи
+
+### 4.1. Старт
+
+1. Прочитать `AGENTS.md` (этот файл) и `README.md`.
+2. Проверить состояние: `git status -sb`, текущая ветка, `git log --oneline -5`.
+3. Открыть **только** модули из карты под задачу; не читать `bin/`, `obj/`, `Assets/` целиком.
+4. Сформулировать план и зафиксировать его в todo/задаче; определить, какие тесты и
+   скриншоты понадобятся.
+
+### 4.2. Разработка
+
+1. Работать в отдельной ветке (`git checkout -b feat/...` / `fix/...` / `docs/...`);
+   `main` не трогать.
+2. Соблюдать ООП и декомпозицию: новый экран — новый класс, новая боевая логика — в домене,
+   новые числа — в `Balance`, новые UI-данные — в каталогах `Rendering/`.
+3. Не рефакторить несвязанное «по пути»; обнаруженные проблемы — отдельной задачей/коммитом.
+4. Держать `README.md` в актуальном состоянии по мере изменений (экраны, управление,
+   классы, флаги, самотест).
+
+### 4.3. Проверка (обязательно перед коммитом)
+
+```powershell
+$env:DOTNET_ROOT = "$env:LOCALAPPDATA\Microsoft\dotnet"
+& "$env:DOTNET_ROOT\dotnet.exe" build DvorFight.csproj -c Release
+```
+
+Требование: **0 ошибок, 0 предупреждений**.
+
+```cmd
+run.cmd --selftest
+```
+
+Требование: `RESULT: PASS`, код возврата 0. Для неинтерактивного прогона:
+`cmd /c "run.cmd --selftest < nul"`. Если менялись геймплей, меню, сложности или каталог —
+добавь/обнови проверки в `Diagnostics/SelfTest.cs` (он headless, без графики).
+
+**UI-изменения:** снять PNG dev-флагом и **лично прочитать изображения** (инструментом
+просмотра изображений), проверив шрифты, выравнивание, отсутствие наездов и обрезки:
+
+```powershell
+$dll = ".\bin\Release\net8.0\DvorFight.dll"
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-title.png --screen title
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters.png --screen fighters
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters-pantera-hard.png --screen fighters --fighter pantera --difficulty hard
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\fight-hud.png --screen fight
+```
+
+Флаги: `--screen title|fighters|fight`, `--fighter andrey|pantera`,
+`--difficulty easy|normal|hard`, `--fight`. Скриншот делается после ~90 кадров, затем игра
+завершается. Если PNG используются в README — не забыть `git add screenshots/`.
+
+Дополнительно: `git diff --check` (пробелы/конфликтные маркеры), `git status` — в индексе
+только осмысленные изменения.
+
+### 4.4. Финал
+
+1. Обновить `README.md`: новые экраны/классы/управление/флаги/вывод самотеста.
+   При изменении правил или структуры — обновить `AGENTS.md` и синхронизировать `.clinerules`.
+2. Проверить итоговый diff (`git diff`, `git diff --cached --stat`), исключить артефакты.
+3. Сделать чистый коммит:
+
+```powershell
+git add <files>
+git diff --cached --stat
+git commit -m "feat(scope): краткое описание"
+```
+
+4. Запушить ветку в origin (не `main`):
+
+```powershell
+git push -u origin <branch>
+```
+
+5. В финальном ответе указать: ветку, коммит, результаты `build`/`--selftest`, какие
+   скриншоты проверены, что обновлено в README/AGENTS, и известные риски.
+
+## 5. Definition of Done
+
+- [ ] Задача выполнена по явному запросу, без несвязанных изменений.
+- [ ] `dotnet build -c Release` — 0 ошибок, 0 предупреждений.
+- [ ] `run.cmd --selftest` — `RESULT: PASS`.
+- [ ] Для UI-изменений: PNG сняты через `--screenshot` и проверены глазами.
+- [ ] Все игровые числа — из `Balance`/профилей; в UI и бойцах нет магических цифр.
+- [ ] `README.md` актуален; при новых правилах/модулях обновлён `AGENTS.md` + `.clinerules`.
+- [ ] `git status` чистый; в коммите нет `bin/`, `obj/`, временных файлов и секретов.
+- [ ] Ветка запушена в `origin`; `main` не изменён.
