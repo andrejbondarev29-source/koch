@@ -6,10 +6,11 @@ using Microsoft.Xna.Framework.Graphics;
 namespace DvorFight.Rendering;
 
 /// <summary>
-/// Character / stats screen: animated fighter cards driven by <see cref="FighterCatalog"/>,
-/// a stats panel whose numbers are read from <see cref="Balance"/>, and the bot difficulty
-/// choice that is passed into the fight. Supports any roster size — extra fighters are
-/// reached with the arrow keys (two cards are visible at a time).
+/// Character / stats screen: a large animated portrait on the left, the fighter's name and
+/// stats on the right, the bot difficulty and the start button. All navigation works with
+/// the keyboard and the mouse; switching fighters plays a short eased slide while the
+/// portrait keeps breathing. The screen is data-driven from <see cref="FighterCatalog"/>,
+/// so a new fighter only needs a new catalog entry and a portrait PNG.
 /// </summary>
 public sealed class FighterSelectScreen : MenuScreen
 {
@@ -20,46 +21,52 @@ public sealed class FighterSelectScreen : MenuScreen
         Start,
     }
 
-    private const int CardWidth = 200;
-    private const int CardHeight = 258;
-    private const int CardGap = 14;
-    private const int CardX = 24;
-    private const int CardY = 80;
-    private const int VisibleCards = 2;
-    private const int CardStep = CardWidth + CardGap;
-
-    private const int PanelX = 452;
-    private const int PanelY = 80;
-    private const int PanelWidth = 484;
-    private const int PanelHeight = 258;
-
-    private const int DifficultyTop = 362;
-    private const int DifficultyWidth = 128;
-    private const int DifficultyHeight = 34;
-    private const int DifficultyGap = 8;
-    private const int DifficultyX = 24;
-
-    private static readonly Rectangle StartButtonRect = new(PanelX, 356, PanelWidth, 54);
-
-    private static readonly Color CardFill = new Color(0x18, 0x1b, 0x27);
-    private static readonly Color CardFillSelected = new Color(0x27, 0x2d, 0x42);
-    private static readonly Color CardFillHover = new Color(0x21, 0x26, 0x36);
-
     private readonly MenuState _state;
+    private readonly ShardField _shards = new();
+    private readonly SelectBackdrop _backdrop = new();
+    private readonly PortraitStage _portrait = new();
+
     private FocusArea _focus;
     private int _selected;
+    private int _previousSelected;
     private int _difficulty;
+
+    private float _time;
+    private float _intro;
+    private float _slide = 1f;
+    private int _slideDir = 1;
 
     public FighterSelectScreen(MenuState state, bool focusStart)
     {
         _state = state;
         _selected = Math.Clamp(FighterCatalog.IndexOf(state.SelectedFighter), 0, Math.Max(0, FighterCatalog.All.Count - 1));
+        _previousSelected = _selected;
         _difficulty = IndexOfDifficulty(state.Difficulty);
         _focus = focusStart ? FocusArea.Start : FocusArea.Fighters;
     }
 
+    /// <summary>Test hook: true while the portrait is sliding from the previous fighter.</summary>
+    internal bool IsTransitioning => _slide < 1f;
+
+    /// <summary>Test hook: 0..1 screen entrance progress.</summary>
+    internal float IntroProgress => _intro;
+
+    /// <summary>Test hook: 0..1 fighter-switch progress.</summary>
+    internal float TransitionProgress => _slide;
+
+    /// <summary>Test hook: horizontal offset of the incoming portrait (0 when settled).</summary>
+    internal float PortraitOffsetX =>
+        _slideDir * SelectMotion.SwapDistance * (1f - SelectMotion.EaseOutCubic(_slide));
+
     public override MenuCommand Update(MenuInput input, float dt)
     {
+        _time += dt;
+        _intro = Math.Min(1f, _intro + dt / SelectMotion.IntroDuration);
+
+        if (_slide < 1f)
+            _slide = Math.Min(1f, _slide + dt / SelectMotion.SwapDuration);
+
+        _shards.Update(dt);
         RememberMouse(input);
 
         // Number keys still pick a fighter directly, like the old one-screen menu.
@@ -68,9 +75,8 @@ public sealed class FighterSelectScreen : MenuScreen
             int shortcut = input.FighterShortcut - 1;
             if (shortcut < FighterCatalog.All.Count)
             {
-                _selected = shortcut;
+                SelectFighterIndex(shortcut);
                 _focus = FocusArea.Fighters;
-                SyncState();
             }
         }
 
@@ -96,22 +102,21 @@ public sealed class FighterSelectScreen : MenuScreen
         if (input.MouseMoved)
             UpdateHover(input.MousePosition);
 
-        for (int slot = 0; slot < VisibleCards; slot++)
+        for (int slot = 0; slot < SelectLayout.VisibleTabs; slot++)
         {
             int index = VisibleIndex(slot);
             if (index < 0)
                 continue;
-            if (!Clicked(CardRect(slot), input))
+            if (!Clicked(SelectLayout.FighterTab(slot), input))
                 continue;
 
-            _selected = index;
             _focus = FocusArea.Fighters;
-            SyncState();
+            SelectFighterIndex(index);
         }
 
         for (int i = 0; i < DifficultyCatalog.All.Count; i++)
         {
-            if (!Clicked(DifficultyRect(i), input))
+            if (!Clicked(SelectLayout.DifficultyPill(i), input))
                 continue;
 
             _difficulty = i;
@@ -119,7 +124,7 @@ public sealed class FighterSelectScreen : MenuScreen
             SyncState();
         }
 
-        if (Clicked(StartButtonRect, input))
+        if (Clicked(SelectLayout.StartButton, input))
             return Start();
 
         if (input.Back)
@@ -135,205 +140,122 @@ public sealed class FighterSelectScreen : MenuScreen
 
     public override void Draw(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts, float time)
     {
-        renderer.FillRect(spriteBatch,
-            new Rectangle(0, 0, Balance.ViewWidth, Balance.ViewHeight), MenuTheme.NightOverlay);
+        _ = time; // the screen keeps its own clock so intro/swap start at zero
 
-        UI.ShadowedText(spriteBatch, fonts.Title, "БОЙЦЫ",
-            new Vector2(Balance.ViewWidth / 2f, 34), MenuTheme.TitleText, TextAlign.Center, 3f);
-        UI.Text(spriteBatch, fonts.Small, "ХАРАКТЕРИСТИКИ · ВЫБОР СЛОЖНОСТИ",
-            new Vector2(Balance.ViewWidth / 2f, 62), MenuTheme.Gold, TextAlign.Center);
+        _backdrop.Draw(spriteBatch, renderer, _time);
+        _shards.DrawBack(spriteBatch, renderer, _time);
 
-        string roster = FighterCatalog.All.Count > VisibleCards
-            ? $"БОЙЦОВ: {FighterCatalog.All.Count} · {_selected + 1}/{FighterCatalog.All.Count}"
-            : $"БОЙЦОВ: {FighterCatalog.All.Count}";
-        UI.Text(spriteBatch, fonts.Small, roster, new Vector2(24, 24), MenuTheme.Muted, TextAlign.Left);
-        UI.Text(spriteBatch, fonts.Small, "Esc — назад", new Vector2(936, 24), MenuTheme.Muted, TextAlign.Right);
+        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro / 0.75f));
+        float introText = SelectMotion.EaseOutQuint(SelectMotion.Clamp01((_intro - 0.08f) / 0.70f));
+        float p = _slide;
+        bool swapping = p < 1f;
 
-        DrawCards(spriteBatch, renderer, fonts, time);
-        DrawStatsPanel(spriteBatch, renderer, fonts);
-        DrawDifficulty(spriteBatch, renderer, fonts);
-        DrawButton(spriteBatch, renderer, fonts, StartButtonRect, "НАЧАТЬ БОЙ",
-            _focus == FocusArea.Start, Contains(StartButtonRect, MousePosition), time);
-
-        DrawHint(spriteBatch, fonts,
-            "← / → — боец / сложность · ↑ / ↓ — раздел · Enter — в бой · Esc — назад", 440);
-    }
-
-    private void DrawCards(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts, float time)
-    {
-        for (int slot = 0; slot < VisibleCards; slot++)
-        {
-            int index = VisibleIndex(slot);
-            if (index < 0)
-                continue;
-
-            var rect = CardRect(slot);
-            var profile = FighterCatalog.All[index];
-            bool selected = index == _selected;
-            bool hovered = Contains(rect, MousePosition);
-
-            renderer.FillRect(spriteBatch,
-                new Rectangle(rect.X + 4, rect.Y + 4, rect.Width, rect.Height), Color.Black * 0.32f);
-
-            var fill = selected ? CardFillSelected : hovered ? CardFillHover : CardFill;
-            var border = selected ? MenuTheme.Gold : hovered ? MenuTheme.ButtonBorder : MenuTheme.PanelBorder;
-            int thickness = selected ? 3 : 1;
-            if (selected && _focus == FocusArea.Fighters)
-                border = Color.Lerp(MenuTheme.Gold, Color.White, MenuTheme.Pulse(time) * 0.35f);
-            renderer.DrawPanel(spriteBatch, rect, fill, border, thickness);
-
-            UI.Text(spriteBatch, fonts.Small, $"{index + 1:00}",
-                new Vector2(rect.X + 12, rect.Y + 10), MenuTheme.MutedDark);
-            if (selected)
-            {
-                UI.Text(spriteBatch, fonts.Small, "ВЫБРАН",
-                    new Vector2(rect.Right - 12, rect.Y + 10), MenuTheme.Gold, TextAlign.Right);
-            }
-
-            DrawLivePreview(spriteBatch, renderer, profile, rect, index, time);
-
-            UI.Text(spriteBatch, fonts.Name, profile.Name,
-                new Vector2(rect.Center.X, rect.Bottom - 44),
-                selected ? MenuTheme.Gold : MenuTheme.Text, TextAlign.Center);
-            UI.Text(spriteBatch, fonts.Small, profile.CardTagline,
-                new Vector2(rect.Center.X, rect.Bottom - 22), MenuTheme.Muted, TextAlign.Center);
-        }
-    }
-
-    /// <summary>Cycles the walk animation slowly, so the card shows the fighter's live stance.</summary>
-    private static void DrawLivePreview(
-        SpriteBatch spriteBatch,
-        Renderer renderer,
-        FighterProfile profile,
-        Rectangle card,
-        int index,
-        float time)
-    {
-        int frames = renderer.Assets.Get(profile.IdleAnimation)?.Count ?? 1;
-        int frame = (int)(time * 6f + index * 1.7f) % frames;
-        float bob = MathF.Sin(time * 2.4f + index * 1.4f) * 2.5f;
-        float feetY = card.Bottom - 66 + bob;
-
-        // Soft contact shadow under the animated fighter.
-        renderer.FillRect(spriteBatch,
-            new Rectangle(card.Center.X - 48, (int)feetY - 3, 96, 5), Color.Black * 0.35f);
-
-        renderer.DrawSprite(spriteBatch, profile.IdleAnimation, frame,
-            card.Center.X, feetY, SpriteEffects.None, 1f, CardWidth * 0.78f);
-    }
-
-    private void DrawStatsPanel(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts)
-    {
         var profile = FighterCatalog.All[_selected];
-        var panel = new Rectangle(PanelX, PanelY, PanelWidth, PanelHeight);
-        renderer.DrawPanel(spriteBatch, panel, MenuTheme.PanelFill, MenuTheme.PanelBorder, 1);
+        float accentPhase = _selected * 1.7f;
+        float bob = MathF.Sin(_time * SelectMotion.BreathSpeed + accentPhase) * SelectMotion.BobAmplitude;
+        float sway = MathF.Sin(_time * SelectMotion.SwaySpeed + accentPhase) * SelectMotion.SwayAmplitude;
+        float tilt = MathF.Sin(_time * 0.70f + accentPhase) * SelectMotion.IdleTilt;
+        float idleScale = 1f + MathF.Sin(_time * SelectMotion.BreathSpeed + accentPhase) * SelectMotion.IdleScale;
+        float introY = (1f - intro) * 36f;
+        float introScale = 0.94f + 0.06f * intro;
 
-        int left = panel.X + 20;
-        int width = panel.Width - 40;
+        GetMouseParallax(out float parallaxX, out float parallaxY);
 
-        UI.ShadowedText(spriteBatch, fonts.Big, profile.Name,
-            new Vector2(left, panel.Y + 16), MenuTheme.TitleText, TextAlign.Left, 2f);
-        UI.Text(spriteBatch, fonts.Small, profile.Tagline,
-            new Vector2(left, panel.Y + 46), MenuTheme.Gold, TextAlign.Left);
+        float baseRotation = MathHelper.ToRadians(profile.PortraitRotationDegrees);
 
-        renderer.FillRect(spriteBatch,
-            new Rectangle(left, panel.Y + 68, width, 1), MenuTheme.PanelBorder * 0.8f);
+        float outX = -_slideDir * SelectMotion.SwapDistance * SelectMotion.EaseInCubic(p);
+        float inX = _slideDir * SelectMotion.SwapDistance * (1f - SelectMotion.EaseOutCubic(p));
+        float outAlpha = 1f - SelectMotion.SmoothStep(0f, 0.65f, p);
+        float inAlpha = SelectMotion.SmoothStep(0.10f, 0.85f, p);
 
-        int column = width / 3;
-        string damage = profile.HasHeavyAttacks
-            ? $"{Balance.LightDamage:0} / {Balance.HeavyDamage:0}"
-            : $"{Balance.LightDamage:0} / —";
-        DrawStat(spriteBatch, fonts, left, panel.Y + 78, "ЗДОРОВЬЕ", $"{Balance.MaxHp:0}");
-        DrawStat(spriteBatch, fonts, left + column, panel.Y + 78, "СКОРОСТЬ", $"{Balance.WalkSpeed:0} px/с");
-        DrawStat(spriteBatch, fonts, left + column * 2, panel.Y + 78, "УРОН Л / Т", damage);
-
-        DrawWrapped(spriteBatch, fonts.Small, profile.Description,
-            new Vector2(left, panel.Y + 120), width, MenuTheme.Text, 2);
-
-        renderer.FillRect(spriteBatch,
-            new Rectangle(left, panel.Y + 158, width, 1), MenuTheme.PanelBorder * 0.8f);
-
-        DrawSpecial(spriteBatch, fonts, left, panel.Y + 166, "Z", profile.SpecialZName, profile.SpecialZDetail);
-        DrawSpecial(spriteBatch, fonts, left, panel.Y + 212, "X", profile.SpecialXName, profile.SpecialXDetail);
-    }
-
-    private static void DrawStat(
-        SpriteBatch spriteBatch,
-        FontSet fonts,
-        int x,
-        int y,
-        string label,
-        string value)
-    {
-        UI.Text(spriteBatch, fonts.Small, label, new Vector2(x, y), MenuTheme.Muted);
-        UI.Text(spriteBatch, fonts.Name, value, new Vector2(x, y + 18), MenuTheme.Text);
-    }
-
-    private static void DrawSpecial(
-        SpriteBatch spriteBatch,
-        FontSet fonts,
-        int x,
-        int y,
-        string key,
-        string name,
-        string detail)
-    {
-        UI.Text(spriteBatch, fonts.Small, key, new Vector2(x, y + 2), MenuTheme.Gold);
-        UI.Text(spriteBatch, fonts.Name, name, new Vector2(x + 18, y), MenuTheme.Text);
-        UI.Text(spriteBatch, fonts.Small, detail, new Vector2(x + 18, y + 20), MenuTheme.Muted);
-    }
-
-    private void DrawDifficulty(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts)
-    {
-        bool focused = _focus == FocusArea.Difficulty;
-        UI.Text(spriteBatch, fonts.Small, "СЛОЖНОСТЬ БОТА",
-            new Vector2(DifficultyX, 344), focused ? MenuTheme.Gold : MenuTheme.Muted);
-
-        for (int i = 0; i < DifficultyCatalog.All.Count; i++)
+        if (swapping && _previousSelected != _selected)
         {
-            var rect = DifficultyRect(i);
-            bool selected = i == _difficulty;
-            bool hovered = Contains(rect, MousePosition);
-            var fill = selected ? (focused ? MenuTheme.ButtonFocusedFill : MenuTheme.ChoiceSelectedFill)
-                : hovered ? MenuTheme.ButtonHoverFill : MenuTheme.ButtonFill;
-            var border = selected ? MenuTheme.Gold : hovered ? MenuTheme.ButtonBorder : MenuTheme.PanelBorder;
+            var previous = FighterCatalog.All[_previousSelected];
+            float previousTilt = MathF.Sin(_time * 0.70f + _previousSelected * 1.7f) * SelectMotion.IdleTilt;
+            var previousCenter = new Vector2(
+                SelectLayout.PortraitCenterX + sway + parallaxX + outX,
+                SelectLayout.PortraitCenterY + bob + parallaxY + introY);
 
-            renderer.DrawPanel(spriteBatch, rect, fill, border, selected ? 2 : 1);
-            if (selected)
-            {
-                renderer.FillRect(spriteBatch,
-                    new Rectangle(rect.X + 6, rect.Bottom - 4, rect.Width - 12, 2), MenuTheme.Gold);
-            }
-
-            UI.Text(spriteBatch, fonts.Name, DifficultyCatalog.All[i].Title,
-                new Vector2(rect.Center.X, rect.Center.Y),
-                selected ? MenuTheme.TitleText : MenuTheme.Text, TextAlign.Center);
+            _portrait.Draw(
+                spriteBatch,
+                renderer,
+                previous,
+                previousCenter,
+                MathHelper.ToRadians(previous.PortraitRotationDegrees) + previousTilt + _slideDir * 0.05f * p,
+                idleScale * introScale * (1f - 0.05f * p),
+                intro * outAlpha,
+                _time);
         }
 
-        DrawWrapped(spriteBatch, fonts.Small, DifficultyCatalog.All[_difficulty].Description,
-            new Vector2(DifficultyX, 406), 412, MenuTheme.Muted, 1);
+        var currentCenter = new Vector2(
+            SelectLayout.PortraitCenterX + sway + parallaxX + inX,
+            SelectLayout.PortraitCenterY + bob + parallaxY + introY);
+        float currentRotation = baseRotation + tilt - _slideDir * 0.05f * (1f - SelectMotion.EaseOutCubic(p));
+        float currentScale = idleScale * introScale * (swapping ? 0.94f + 0.06f * SelectMotion.EaseOutCubic(p) : 1f);
+        float currentAlpha = intro * (swapping ? inAlpha : 1f);
+
+        _portrait.Draw(
+            spriteBatch,
+            renderer,
+            profile,
+            currentCenter,
+            currentRotation,
+            currentScale,
+            currentAlpha,
+            _time);
+
+        _shards.DrawFront(spriteBatch, renderer, _time);
+        SelectUi.DrawRightVeil(spriteBatch, renderer);
+
+        SelectUi.DrawHeader(spriteBatch, renderer, fonts, _selected, FighterCatalog.All.Count);
+        SelectUi.DrawFighterTabs(spriteBatch, renderer, fonts, _selected, FighterCatalog.All.Count,
+            _focus == FocusArea.Fighters, MousePosition, _time);
+
+        float textAlpha = introText * (1f - 0.35f * MathF.Sin(MathF.PI * p));
+        float textShift = swapping ? _slideDir * 8f * (1f - SelectMotion.EaseOutCubic(p)) : 0f;
+        Color accent = SelectTheme.AccentFor(profile.Kind);
+
+        SelectUi.DrawHeroName(spriteBatch, renderer, fonts, profile.Name, textAlpha, textShift);
+        SelectUi.DrawTagline(spriteBatch, fonts, profile, accent, textAlpha);
+        SelectUi.DrawRule(spriteBatch, renderer, textAlpha);
+        SelectUi.DrawStats(spriteBatch, renderer, fonts, profile, textAlpha);
+        SelectUi.DrawDescription(spriteBatch, fonts, profile, textAlpha);
+        SelectUi.DrawSpecials(spriteBatch, renderer, fonts, profile, accent, textAlpha);
+
+        SelectUi.DrawDifficulty(spriteBatch, renderer, fonts, _difficulty,
+            _focus == FocusArea.Difficulty, MousePosition, _time);
+        SelectUi.DrawStartButton(spriteBatch, renderer, fonts,
+            _focus == FocusArea.Start, Contains(SelectLayout.StartButton, MousePosition), _time);
+        SelectUi.DrawHint(spriteBatch, fonts);
+    }
+
+    private void GetMouseParallax(out float x, out float y)
+    {
+        x = 0f;
+        y = 0f;
+        if (!Contains(SelectLayout.Stage, MousePosition))
+            return;
+
+        x = (MousePosition.X - SelectLayout.PortraitCenterX) / SelectLayout.PortraitCenterX * -6f;
+        y = (MousePosition.Y - SelectLayout.PortraitCenterY) / SelectLayout.PortraitCenterY * -4f;
     }
 
     private void UpdateHover(Vector2 mouse)
     {
-        for (int slot = 0; slot < VisibleCards; slot++)
+        for (int slot = 0; slot < SelectLayout.VisibleTabs; slot++)
         {
             int index = VisibleIndex(slot);
-            if (index < 0 || !Contains(CardRect(slot), mouse))
+            if (index < 0 || !Contains(SelectLayout.FighterTab(slot), mouse))
                 continue;
 
             _focus = FocusArea.Fighters;
-            if (index != _selected)
-            {
-                _selected = index;
-                SyncState();
-            }
+            SelectFighterIndex(index);
             return;
         }
 
         for (int i = 0; i < DifficultyCatalog.All.Count; i++)
         {
-            if (!Contains(DifficultyRect(i), mouse))
+            if (!Contains(SelectLayout.DifficultyPill(i), mouse))
                 continue;
 
             _focus = FocusArea.Difficulty;
@@ -345,7 +267,7 @@ public sealed class FighterSelectScreen : MenuScreen
             return;
         }
 
-        if (Contains(StartButtonRect, mouse))
+        if (Contains(SelectLayout.StartButton, mouse))
             _focus = FocusArea.Start;
     }
 
@@ -357,7 +279,20 @@ public sealed class FighterSelectScreen : MenuScreen
 
     private void SelectFighter(int delta)
     {
-        _selected = Wrap(_selected, delta, FighterCatalog.All.Count);
+        SelectFighterIndex(Wrap(_selected, delta, FighterCatalog.All.Count));
+    }
+
+    private void SelectFighterIndex(int index)
+    {
+        if (index < 0 || index >= FighterCatalog.All.Count || index == _selected)
+            return;
+
+        int delta = index > _selected ? 1 : -1;
+        _previousSelected = _selected;
+        _selected = index;
+        _slide = 0f;
+        _slideDir = delta;
+        _shards.Burst(SelectLayout.PortraitCenterX, SelectLayout.PortraitCenterY, delta);
         SyncState();
     }
 
@@ -384,24 +319,9 @@ public sealed class FighterSelectScreen : MenuScreen
         return 0;
     }
 
-    private int FirstVisible
-    {
-        get
-        {
-            int count = FighterCatalog.All.Count;
-            return Math.Clamp(_selected - 1, 0, Math.Max(0, count - VisibleCards));
-        }
-    }
-
     private int VisibleIndex(int slot)
     {
-        int index = FirstVisible + slot;
+        int index = SelectLayout.FirstVisible(_selected, FighterCatalog.All.Count) + slot;
         return index < FighterCatalog.All.Count ? index : -1;
     }
-
-    private static Rectangle CardRect(int slot) =>
-        new(CardX + slot * CardStep, CardY, CardWidth, CardHeight);
-
-    private static Rectangle DifficultyRect(int index) =>
-        new(DifficultyX + index * (DifficultyWidth + DifficultyGap), DifficultyTop, DifficultyWidth, DifficultyHeight);
 }
