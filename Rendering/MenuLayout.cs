@@ -11,10 +11,10 @@ internal static class MenuLayout
 {
     public const int ListX = 552;
     public const int ListWidth = 372;
-    public const int ListTop = 148;
+    public const int ListTop = 172;
     public const int ItemHeight = 68;
     public const int ItemGap = 4;
-    public const int VisibleItems = 4;
+    public const int VisibleItems = 3;
 
     public const float PortraitCenterX = 250f;
     public const float PortraitCenterY = 240f;

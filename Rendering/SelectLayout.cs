@@ -23,13 +23,12 @@ internal static class SelectLayout
     public static readonly Rectangle Stage = new(0, 0, StageWidth, Balance.ViewHeight);
 
     public static readonly Rectangle HeroName = new(ContentX, 40, ContentWidth, 76);
-    public static readonly Rectangle StartButton = new(ContentX, 398, ContentWidth, 46);
 
     public static Rectangle FighterTab(int slot) =>
         new(20, 384 + slot * 36, 148, 30);
 
     public static Rectangle DifficultyPill(int index) =>
-        new(ContentX + index * 140, 340, 128, 30);
+        new(ContentX + index * 140, 346, 128, 30);
 
     public static int FirstVisible(int selected, int total) =>
         Math.Clamp(selected - 1, 0, Math.Max(0, total - VisibleTabs));

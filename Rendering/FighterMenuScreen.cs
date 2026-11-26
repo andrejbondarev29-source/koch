@@ -7,8 +7,9 @@ namespace DvorFight.Rendering;
 
 /// <summary>
 /// Quick character-select menu opened by «Играть». Deliberately minimal: a large portrait
-/// on the left and a slanted vertical list (fighters + «В БОЙ») on the right, with no stats
-/// panels. The detailed stats/difficulty screen stays available from «Бойцы / Характеристики».
+/// on the left and a slanted vertical list of fighters on the right, with no stats panels
+/// and no start button — a click on a fighter (or <c>Enter</c>) starts the fight. The
+/// detailed stats/difficulty screen stays available from «Бойцы / Характеристики».
 /// </summary>
 public sealed class FighterMenuScreen : MenuScreen
 {
@@ -19,7 +20,6 @@ public sealed class FighterMenuScreen : MenuScreen
 
     private int _selected;
     private int _previousSelected;
-    private int _cursor;
 
     private float _time;
     private float _intro;
@@ -31,13 +31,11 @@ public sealed class FighterMenuScreen : MenuScreen
         _state = state;
         _selected = Math.Clamp(FighterCatalog.IndexOf(state.SelectedFighter), 0, Math.Max(0, FighterCatalog.All.Count - 1));
         _previousSelected = _selected;
-        _cursor = _selected;
     }
 
     internal bool IsTransitioning => _slide < 1f;
     internal float IntroProgress => _intro;
     internal float TransitionProgress => _slide;
-    internal int Cursor => _cursor;
 
     internal float PortraitOffsetX =>
         _slideDir * SelectMotion.SwapDistance * (1f - SelectMotion.EaseOutCubic(_slide));
@@ -57,16 +55,13 @@ public sealed class FighterMenuScreen : MenuScreen
         {
             int shortcut = input.FighterShortcut - 1;
             if (shortcut < FighterCatalog.All.Count)
-            {
-                _cursor = shortcut;
                 SelectFighterIndex(shortcut);
-            }
         }
 
         if (input.Up)
-            MoveCursor(-1);
+            SelectFighter(-1);
         if (input.Down)
-            MoveCursor(1);
+            SelectFighter(1);
 
         if (input.Left)
             SelectFighter(-1);
@@ -76,25 +71,24 @@ public sealed class FighterMenuScreen : MenuScreen
         if (input.MouseMoved)
             UpdateHover(input.MousePosition);
 
-        int total = ItemCount;
         for (int slot = 0; slot < MenuLayout.VisibleItems; slot++)
         {
             int index = VisibleIndex(slot);
             if (index < 0 || !Clicked(MenuLayout.ItemRect(slot), input))
                 continue;
 
-            if (index == total - 1)
-                return Start();
-
-            _cursor = index;
             SelectFighterIndex(index);
-            return MenuCommand.None;
+            return Start();
         }
+
+        // Clicking the large portrait is the same "start fight" gesture.
+        var stage = new Rectangle(0, 0, 512, Balance.ViewHeight);
+        if (Clicked(stage, input))
+            return Start();
 
         if (input.Back)
             return MenuCommand.BackToTitle;
 
-        // Enter starts the fight from any row: the chosen fighter is always visible.
         if (input.Confirm)
             return Start();
 
@@ -169,29 +163,19 @@ public sealed class FighterMenuScreen : MenuScreen
         SelectUi.DrawRightVeil(spriteBatch, renderer);
 
         MenuUi.DrawInfoCard(spriteBatch, renderer, fonts, _selected, FighterCatalog.All.Count, _state.Difficulty);
-        MenuUi.DrawList(spriteBatch, renderer, fonts, _selected, _cursor, _time);
+        MenuUi.DrawList(spriteBatch, renderer, fonts, _selected, _time);
         MenuUi.DrawHints(spriteBatch, renderer, fonts);
     }
 
-    private int ItemCount => FighterCatalog.All.Count + 1;
-
     private int VisibleIndex(int slot)
     {
-        int index = MenuLayout.FirstVisible(_cursor, ItemCount) + slot;
-        return index < ItemCount ? index : -1;
-    }
-
-    private void MoveCursor(int delta)
-    {
-        _cursor = Wrap(_cursor, delta, ItemCount);
-        if (_cursor < FighterCatalog.All.Count)
-            SelectFighterIndex(_cursor);
+        int index = MenuLayout.FirstVisible(_selected, FighterCatalog.All.Count) + slot;
+        return index < FighterCatalog.All.Count ? index : -1;
     }
 
     private void SelectFighter(int delta)
     {
         int next = Wrap(_selected, delta, FighterCatalog.All.Count);
-        _cursor = next;
         SelectFighterIndex(next);
     }
 
@@ -217,9 +201,7 @@ public sealed class FighterMenuScreen : MenuScreen
             if (index < 0 || !Contains(MenuLayout.ItemRect(slot), mouse))
                 continue;
 
-            _cursor = index;
-            if (index < FighterCatalog.All.Count)
-                SelectFighterIndex(index);
+            SelectFighterIndex(index);
             return;
         }
     }

@@ -44,16 +44,17 @@ internal static class MenuUi
         Renderer renderer,
         FontSet fonts,
         int selected,
-        int cursor,
         float time)
     {
-        int total = FighterCatalog.All.Count + 1; // fighters + «В БОЙ»
-        int first = MenuLayout.FirstVisible(cursor, total);
+        int total = FighterCatalog.All.Count;
+        int first = MenuLayout.FirstVisible(selected, total);
         float pulse = MenuTheme.Pulse(time, 3.2f);
+        int visible = Math.Min(total, MenuLayout.VisibleItems);
+        int railHeight = visible * (MenuLayout.ItemHeight + MenuLayout.ItemGap) + 8;
 
         // Thin red rail behind the list, like the accent bars of the reference.
         renderer.FillRect(spriteBatch,
-            new Rectangle(MenuLayout.ListX - 20, 136, 2, 292),
+            new Rectangle(MenuLayout.ListX - 20, 160, 2, railHeight),
             SelectTheme.Crimson * 0.35f);
 
         for (int slot = 0; slot < MenuLayout.VisibleItems; slot++)
@@ -63,14 +64,12 @@ internal static class MenuUi
                 break;
 
             Rectangle rect = MenuLayout.ItemRect(slot);
-            bool isCursor = index == cursor;
-            bool isAction = index == total - 1;
-            bool isChosen = !isAction && index == selected;
-            string label = isAction ? "В БОЙ" : FighterCatalog.All[index].Name.ToUpperInvariant();
+            bool isSelected = index == selected;
+            string label = FighterCatalog.All[index].Name.ToUpperInvariant();
             var font = fonts.Title;
             float textWidth = font.MeasureString(label).X;
 
-            if (isCursor)
+            if (isSelected)
             {
                 float barY = rect.Y + 56f;
                 float rightX = MenuLayout.ListX + textWidth + 18f;
@@ -92,24 +91,9 @@ internal static class MenuUi
                 };
                 renderer.FillPolygon(spriteBatch, marker, SelectTheme.Crimson);
             }
-            else if (isChosen)
-            {
-                renderer.FillRect(spriteBatch,
-                    new Rectangle(MenuLayout.ListX - 25, rect.Y + 22, 4, 26),
-                    SelectTheme.Crimson * 0.75f);
-            }
 
-            if (isAction)
-            {
-                renderer.FillRect(spriteBatch,
-                    new Rectangle(MenuLayout.ListX - 18, rect.Y - 12, 372, 1),
-                    SelectTheme.Cyan * 0.22f);
-            }
-
-            Color main = isCursor
-                ? SelectTheme.Paper
-                : isChosen ? SelectTheme.Paper * 0.88f : SelectTheme.Cyan * 0.64f;
-            Color shadow = isCursor ? SelectTheme.Crimson : Color.Transparent;
+            Color main = isSelected ? SelectTheme.Paper : SelectTheme.Cyan * 0.64f;
+            Color shadow = isSelected ? SelectTheme.Crimson : Color.Transparent;
 
             DrawSlantedText(
                 spriteBatch,
@@ -129,10 +113,8 @@ internal static class MenuUi
         renderer.FillRect(spriteBatch,
             new Rectangle(MenuLayout.ListX - 20, 452, 9, 4),
             SelectTheme.Crimson);
-        UI.Text(spriteBatch, fonts.Name, "ENTER — В БОЙ",
-            new Vector2(MenuLayout.ListX, 440), SelectTheme.Paper);
-        UI.Text(spriteBatch, fonts.Small, "ESC — НАЗАД",
-            new Vector2(MenuLayout.ListX + 196, 446), SelectTheme.Muted);
+        UI.Text(spriteBatch, fonts.Small, "КЛИК / ENTER — В БОЙ · ESC — НАЗАД",
+            new Vector2(MenuLayout.ListX, 446), SelectTheme.Ice * 0.78f);
     }
 
     private static void DrawSlantedText(

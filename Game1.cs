@@ -124,6 +124,11 @@ public class Game1 : Game
         _input = new InputController();
         _session = new FightSession(_audio, _assets.LoadCutsceneFrames());
 
+        // Avoid a phantom edge-trigger / hover on the very first frame: the default
+        // KeyboardState/MouseState are "empty" and differ from the real devices.
+        _prevKeyboard = Keyboard.GetState();
+        _prevMouse = Mouse.GetState();
+
         _menuState.SelectedFighter = InitialFighter;
         _menuState.Difficulty = InitialDifficulty;
 
@@ -141,7 +146,7 @@ public class Game1 : Game
                 _menuScreen = CreateFighterMenu();
                 break;
             case GameScreen.FighterSelect:
-                _menuScreen = CreateFighterSelect(focusStart: false);
+                _menuScreen = CreateFighterSelect();
                 break;
             default:
                 _screen = GameScreen.Title;
@@ -188,6 +193,11 @@ public class Game1 : Game
                 : 0,
         };
 
+        // Screenshot mode must be deterministic: ignore the real mouse so a stray click
+        // that activates the window cannot start a fight before the PNG is captured.
+        if (ScreenshotPath != null)
+            input = new MenuInput { MousePosition = new Vector2(-100f, -100f) };
+
         var command = _menuScreen.Update(input, dt);
         switch (command.Type)
         {
@@ -195,7 +205,7 @@ public class Game1 : Game
                 OpenFighterMenu();
                 break;
             case MenuCommandType.OpenFighters:
-                OpenFighterSelect(focusStart: false);
+                OpenFighterSelect();
                 break;
             case MenuCommandType.StartFight:
                 StartFight(command.Fighter, command.Difficulty);
@@ -232,8 +242,8 @@ public class Game1 : Game
     private FighterMenuScreen CreateFighterMenu() =>
         new(_menuState);
 
-    private FighterSelectScreen CreateFighterSelect(bool focusStart) =>
-        new(_menuState, focusStart);
+    private FighterSelectScreen CreateFighterSelect() =>
+        new(_menuState);
 
     private void OpenFighterMenu()
     {
@@ -243,10 +253,10 @@ public class Game1 : Game
         _lastSelectScreen = _screen;
     }
 
-    private void OpenFighterSelect(bool focusStart)
+    private void OpenFighterSelect()
     {
         _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
-        _menuScreen = CreateFighterSelect(focusStart);
+        _menuScreen = CreateFighterSelect();
         _screen = GameScreen.FighterSelect;
         _lastSelectScreen = _screen;
     }
@@ -254,7 +264,7 @@ public class Game1 : Game
     private void OpenLastSelect()
     {
         if (_lastSelectScreen == GameScreen.FighterSelect)
-            OpenFighterSelect(focusStart: false);
+            OpenFighterSelect();
         else
             OpenFighterMenu();
     }
