@@ -79,7 +79,7 @@ public abstract class MenuScreen
     }
 
     /// <summary>Word-wrap that respects the real dynamic-font metrics.</summary>
-    protected static List<string> WrapText(DynamicSpriteFont font, string text, float maxWidth)
+    protected internal static List<string> WrapText(DynamicSpriteFont font, string text, float maxWidth)
     {
         var lines = new List<string>();
         string current = "";
@@ -105,7 +105,7 @@ public abstract class MenuScreen
     }
 
     /// <summary>Draws wrapped small text starting at the given top-left point.</summary>
-    protected static void DrawWrapped(
+    protected internal static void DrawWrapped(
         SpriteBatch spriteBatch,
         DynamicSpriteFont font,
         string text,

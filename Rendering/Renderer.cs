@@ -11,6 +11,7 @@ namespace DvorFight.Rendering;
 public sealed class Renderer
 {
     public AssetStore Assets { get; }
+    public GraphicsDevice GraphicsDevice { get; }
     public float Clock { get; set; }
 
     private readonly Texture2D _pixel;
@@ -18,6 +19,7 @@ public sealed class Renderer
     public Renderer(GraphicsDevice graphicsDevice, AssetStore assets)
     {
         Assets = assets;
+        GraphicsDevice = graphicsDevice;
         _pixel = new Texture2D(graphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
     }
@@ -77,5 +79,80 @@ public sealed class Renderer
 
         float rotation = MathF.Atan2(delta.Y, delta.X);
         spriteBatch.Draw(_pixel, from, null, color, rotation, new Vector2(0f, 0.5f), new Vector2(length, thickness), SpriteEffects.None, 0f);
+    }
+
+    /// <summary>
+    /// Draws a whole texture centred on <paramref name="center"/> with rotation and a
+    /// uniform scale. Unlike <see cref="DrawSprite"/> it makes no assumption about the
+    /// source aspect ratio — the fighter portraits are 3:4, not 264x252.
+    /// </summary>
+    public void DrawTextureEx(
+        SpriteBatch spriteBatch,
+        Texture2D texture,
+        Vector2 center,
+        float rotation,
+        Vector2 scale,
+        Color tint,
+        SpriteEffects effects = SpriteEffects.None)
+    {
+        var origin = new Vector2(texture.Width / 2f, texture.Height / 2f);
+        spriteBatch.Draw(texture, center, null, tint, rotation, origin, scale, effects, 0f);
+    }
+
+    /// <summary>Fills a convex or concave polygon by rasterising it one scanline at a time.</summary>
+    public void FillPolygon(SpriteBatch spriteBatch, IReadOnlyList<Vector2> points, Color color)
+    {
+        if (points.Count < 3)
+            return;
+
+        float minY = float.MaxValue;
+        float maxY = float.MinValue;
+        for (int i = 0; i < points.Count; i++)
+        {
+            minY = MathF.Min(minY, points[i].Y);
+            maxY = MathF.Max(maxY, points[i].Y);
+        }
+
+        int top = Math.Max(0, (int)MathF.Floor(minY));
+        int bottom = Math.Min(Balance.ViewHeight, (int)MathF.Ceiling(maxY));
+        var intersections = new List<float>(points.Count);
+
+        for (int y = top; y < bottom; y++)
+        {
+            float scanY = y + 0.5f;
+            intersections.Clear();
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                Vector2 a = points[i];
+                Vector2 b = points[(i + 1) % points.Count];
+                if (MathF.Abs(a.Y - b.Y) < 0.0001f)
+                    continue;
+                if ((a.Y <= scanY && b.Y > scanY) || (b.Y <= scanY && a.Y > scanY))
+                {
+                    float t = (scanY - a.Y) / (b.Y - a.Y);
+                    intersections.Add(a.X + t * (b.X - a.X));
+                }
+            }
+
+            intersections.Sort();
+            for (int i = 0; i + 1 < intersections.Count; i += 2)
+            {
+                int left = (int)MathF.Round(intersections[i]);
+                int right = (int)MathF.Round(intersections[i + 1]);
+                if (right > left)
+                    FillRect(spriteBatch, new Rectangle(left, y, right - left, 1), color);
+            }
+        }
+    }
+
+    public void FillQuad(SpriteBatch spriteBatch, Vector2[] points, Color color) =>
+        FillPolygon(spriteBatch, points, color);
+
+    /// <summary>Outlines a polygon edge by edge; used for the angular menu plaques.</summary>
+    public void DrawPolygonBorder(SpriteBatch spriteBatch, IReadOnlyList<Vector2> points, Color color, float thickness)
+    {
+        for (int i = 0; i < points.Count; i++)
+            DrawLine(spriteBatch, points[i], points[(i + 1) % points.Count], color, thickness);
     }
 }

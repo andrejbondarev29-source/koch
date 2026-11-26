@@ -17,6 +17,13 @@ public sealed class FighterProfile
     public string Tagline { get; }
     public string Description { get; }
     public string IdleAnimation { get; }
+
+    /// <summary>Asset key of the large select-screen portrait (e.g. <c>portraits/andrey</c>).</summary>
+    public string PortraitAnimation { get; }
+
+    /// <summary>Base tilt of the portrait in degrees; the screen adds the breathing sway on top.</summary>
+    public float PortraitRotationDegrees { get; }
+
     public string SpecialZName { get; }
     public string SpecialZDetail { get; }
     public string SpecialXName { get; }
@@ -34,22 +41,26 @@ public sealed class FighterProfile
         string tagline,
         string description,
         string idleAnimation,
+        string portraitAnimation,
         bool hasHeavyAttacks,
         string specialZName,
         string specialZDetail,
         string specialXName,
-        string specialXDetail)
+        string specialXDetail,
+        float portraitRotationDegrees = -8f)
     {
         Kind = kind;
         Name = name;
         Tagline = tagline;
         Description = description;
         IdleAnimation = idleAnimation;
+        PortraitAnimation = portraitAnimation;
         HasHeavyAttacks = hasHeavyAttacks;
         SpecialZName = specialZName;
         SpecialZDetail = specialZDetail;
         SpecialXName = specialXName;
         SpecialXDetail = specialXDetail;
+        PortraitRotationDegrees = portraitRotationDegrees;
     }
 }
 
@@ -63,6 +74,7 @@ public static class FighterCatalog
             "Вонючие ноги · Метаморфоза",
             "Дворовый силач: издалека кидает шузы, а в морфе превращается в танк с тяжёлыми ударами.",
             "andrey/walk",
+            "portraits/andrey",
             hasHeavyAttacks: true,
             "Вонючие ноги",
             $"{Balance.ShoeCount:0} шуза · урон {Balance.ShoeDamage:0} · откат {Balance.SpecialZCooldown:0.0} с",
@@ -75,6 +87,7 @@ public static class FighterCatalog
             "Ушной луч · Призыв танцовщицы",
             "Держит дистанцию: прожигает ушным лучом и призывает танцовщицу добить соперника.",
             "pantera/walk",
+            "portraits/pantera",
             hasHeavyAttacks: false,
             "Ушной луч",
             $"урон {Balance.EarBeamDamage:0} · дальность {Balance.EarBeamRange:0} · откат {Balance.SpecialZCooldown:0.0} с",

@@ -127,6 +127,22 @@ public static class SelfTest
             Expect(File.Exists(preview), $"нет анимации стойки для {profile.Name}: {profile.IdleAnimation}");
             Expect(profile.SpecialZDetail.Contains(Balance.SpecialZCooldown.ToString("0.0")),
                 $"откат Z для {profile.Name} не взят из Balance");
+
+            Expect(!string.IsNullOrWhiteSpace(profile.PortraitAnimation),
+                $"у бойца {profile.Name} не указан портрет для экрана выбора");
+
+            // The large portraits are delivered as separate art assets. Until they are in
+            // the repository the screen falls back to the stance animation; report the
+            // missing file as a warning instead of failing the whole self-test.
+            string portrait = Path.Combine(AppContext.BaseDirectory, "Content", "Sprites", profile.PortraitAnimation, "0.png");
+            if (File.Exists(portrait))
+            {
+                checks++;
+            }
+            else
+            {
+                Console.WriteLine($"          WARN: портрет ещё не добавлен: {profile.PortraitAnimation}/0.png");
+            }
         }
 
         // Difficulty profiles must be ordered from softer to harsher.
@@ -190,19 +206,89 @@ public static class SelfTest
         next = select.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.BackToTitle, "Esc не возвращает на стартовый экран");
 
-        // Mouse path: click a title button, click the second card, a difficulty pill and Start.
+        // Screen entrance and fighter-switch animations: Update-only, no GraphicsDevice.
+        var animState = new MenuState();
+        var anim = new FighterSelectScreen(animState, focusStart: false);
+        anim.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(anim.IntroProgress > 0f, "интро экрана не запускается");
+
+        for (int i = 0; i < 40; i++)
+            anim.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(anim.IntroProgress >= 1f, "интро экрана не завершается");
+
+        anim.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        Expect(animState.SelectedFighter == FighterKind.Pantera, "смена бойца не обновляет MenuState сразу");
+        Expect(anim.IsTransitioning, "смена бойца не запускает слайд портрета");
+        float transitionOffset = MathF.Abs(anim.PortraitOffsetX);
+        Expect(transitionOffset > 50f, "портрет не уезжает при смене бойца");
+
+        bool monotonic = true;
+        float previousOffset = transitionOffset;
+        for (int i = 0; i < 30; i++)
+        {
+            anim.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+            float currentOffset = MathF.Abs(anim.PortraitOffsetX);
+            monotonic &= currentOffset <= previousOffset + 0.01f;
+            previousOffset = currentOffset;
+        }
+        Expect(monotonic, "смещение портрета затухает не монотонно");
+        Expect(!anim.IsTransitioning && MathF.Abs(anim.PortraitOffsetX) < 0.01f,
+            "слайд портрета не завершается");
+
+        // Input must not be blocked while the portrait is still sliding.
+        var fastState = new MenuState();
+        var fast = new FighterSelectScreen(fastState, focusStart: false);
+        fast.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        next = fast.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
+            "Enter во время слайда не стартует выбранного бойца");
+
+        // A second direction key during the slide retargets the animation cleanly.
+        var retargetState = new MenuState();
+        var retarget = new FighterSelectScreen(retargetState, focusStart: false);
+        retarget.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        retarget.Update(new MenuInput { MousePosition = origin }, 0.10f);
+        retarget.Update(new MenuInput { Left = true, MousePosition = origin }, 1f / 60f);
+        Expect(retargetState.SelectedFighter == FighterKind.Andrey,
+            "повторное переключение не возвращает первого бойца");
+        for (int i = 0; i < 30; i++)
+            retarget.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(!retarget.IsTransitioning && MathF.Abs(retarget.PortraitOffsetX) < 0.01f,
+            "перенацеленный слайд не завершается");
+
+        // Mouse path: click a title button, the second fighter tab, a difficulty pill and Start.
         title = new TitleScreen();
         next = title.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(480, 226) }, 1f / 60f);
         Expect(next.Type == MenuCommandType.Play, "клик по «Играть» не запускает игру");
 
         state = new MenuState();
         select = new FighterSelectScreen(state, focusStart: false);
-        select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(338, 209) }, 1f / 60f);
-        Expect(state.SelectedFighter == FighterKind.Pantera, "клик по карточке не выбирает бойца");
-        select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(360, 379) }, 1f / 60f);
+
+        var tabRect = SelectLayout.FighterTab(1);
+        select.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(tabRect.Center.X, tabRect.Center.Y),
+        }, 1f / 60f);
+        Expect(state.SelectedFighter == FighterKind.Pantera, "клик по вкладке не выбирает бойца");
+
+        var pillRect = SelectLayout.DifficultyPill(2);
+        select.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(pillRect.Center.X, pillRect.Center.Y),
+        }, 1f / 60f);
         Expect(state.Difficulty == BotDifficulty.Hard, "клик по кнопке сложности не переключает сложность");
-        next = select.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(694, 383) }, 1f / 60f);
+
+        var startRect = SelectLayout.StartButton;
+        next = select.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(startRect.Center.X, startRect.Center.Y),
+        }, 1f / 60f);
         Expect(next.Type == MenuCommandType.StartFight, "клик по «Начать бой» не запускает бой");
+        Expect(next.Fighter == FighterKind.Pantera && next.Difficulty == BotDifficulty.Hard,
+            "клик по старту не передал выбранные боец/сложность");
 
         Console.WriteLine($"[Меню и сложности] проверок={checks} провалов={failures}");
         return failures;

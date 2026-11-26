@@ -22,6 +22,7 @@ public class Game1 : Game
     private SpriteBatch _spriteBatch = null!;
 
     private FontSystem _fontSystem = null!;
+    private FontSystem? _displayFontSystem;
     private FontSet _fonts = null!;
 
     private AssetStore _assets = null!;
@@ -90,11 +91,23 @@ public class Game1 : Game
         };
         _fontSystem = new FontSystem(fontSettings);
         _fontSystem.AddFont(File.ReadAllBytes(fontPath));
+
+        // Optional geometric display face for the fighter-select hero name. When the file
+        // is absent the regular UI font is used at the same size, so no asset is required.
+        string displayPath = Path.Combine(fontDir, "display.ttf");
+        if (File.Exists(displayPath))
+        {
+            _displayFontSystem = new FontSystem(fontSettings);
+            _displayFontSystem.AddFont(File.ReadAllBytes(displayPath));
+        }
+
+        FontSystem displaySystem = _displayFontSystem ?? _fontSystem;
         _fonts = new FontSet(
             _fontSystem.GetFont(48),
             _fontSystem.GetFont(24),
             _fontSystem.GetFont(19),
-            _fontSystem.GetFont(15));
+            _fontSystem.GetFont(15),
+            displaySystem.GetFont(64));
 
         _assets = new AssetStore(GraphicsDevice);
         _assets.Load();

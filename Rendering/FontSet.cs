@@ -13,15 +13,20 @@ public sealed class FontSet
     public DynamicSpriteFont Name { get; }
     public DynamicSpriteFont Small { get; }
 
+    /// <summary>Large display face used by the fighter-select hero name (64 px).</summary>
+    public DynamicSpriteFont Display { get; }
+
     public FontSet(
         DynamicSpriteFont title,
         DynamicSpriteFont big,
         DynamicSpriteFont name,
-        DynamicSpriteFont small)
+        DynamicSpriteFont small,
+        DynamicSpriteFont display)
     {
         Title = title;
         Big = big;
         Name = name;
         Small = small;
+        Display = display;
     }
 }

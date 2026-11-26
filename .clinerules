@@ -54,6 +54,7 @@
 | Создание бойцов и ростер | `Domain/FighterFactory.cs`; данные карточек — `Rendering/FighterCatalog.cs` |
 | Бой как сессия (hit-stop, KO, cutscene, сложность) | `Combat/FightSession.cs` |
 | Экраны меню | `Rendering/TitleScreen.cs`, `Rendering/FighterSelectScreen.cs`, `Rendering/ResultOverlay.cs` |
+| Экран выбора: фон, осколки, портрет, UI | `Rendering/SelectBackdrop.cs`, `ShardField.cs`, `PortraitStage.cs`, `SelectUi.cs`, `SelectTheme.cs`, `SelectMotion.cs`, `SelectLayout.cs` |
 | Общие основы меню | `Rendering/MenuScreen.cs`, `MenuInput.cs`, `MenuCommand.cs`, `MenuState.cs`, `MenuTheme.cs`, `FontSet.cs`, `Rendering/DifficultyCatalog.cs` |
 | HUD, шрифты, выравнивание | `Rendering/Hud.cs`, `Rendering/UI.cs`, `Rendering/FontSet.cs` |
 | Переходы экранов, окно, game loop | `Game1.cs`; флаги запуска — `Program.cs` |
@@ -76,8 +77,12 @@
   `BotDifficultyProfile` + подпись `DifficultyCatalog` (и проверка в самотесте).
 - Новый боец: наследник `Fighter` (при необходимости override `Title`/`GroupKey`/
   `SpritesFaceRight`) → кейс в `FighterFactory` → запись в `FighterCatalog` → анимации в
-  `Content/Sprites`. Меню подхватит карточку автоматически; при >2 бойцах работает
-  листание стрелками.
+  `Content/Sprites` и портрет `Content/Sprites/portraits/<kind>/0.png`. Меню подхватит
+  карточку автоматически; при >2 бойцах работает листание стрелками.
+- Портреты экрана выбора — PNG `1200×1600`, straight alpha, имя строго `0.png`:
+  `AssetStore` сортирует файлы через `int.Parse`, нечисловые имена роняют загрузку.
+  Белая плашка, свечение, тень и наклон — код (`PortraitStage`), не PNG.
+  Опциональный `Content/Fonts/display.ttf` должен содержать кириллицу.
 
 ## 3. Инварианты кода и визуала
 
@@ -89,6 +94,10 @@
   поэтому навигация должна оставаться тестируемой headless, без `GraphicsDevice`.
 - `MenuInput` заполняется только в `Game1` (edge-trigger + виртуальные координаты мыши),
   экраны не вызывают MonoGame Input напрямую.
+- Экраны меню остаются headless-тестируемыми: конструктор и `Update` не создают
+  `Texture2D` и не обращаются к `GraphicsDevice`. GPU-ресурсы (фон, glow, осколки)
+  создаются лениво в `Draw` и кешируются; это относится к `FighterSelectScreen` и его
+  помощникам `SelectBackdrop`/`ShardField`/`PortraitStage`.
 - Доменный слой (`Domain`, `Combat`, `AI`, `Config`) не должен зависеть от меню.
   Отрисовка сущностей — через `Draw(..., SpriteBatch, Renderer)`.
 - Бойцы создаются через `FighterFactory.Create`, а не тернарниками в `FightSession`.
@@ -104,14 +113,14 @@
 - Текст позиционировать **в целых пикселях**; `UI.Text`/`UI.ShadowedText` уже округляют
   координаты. Не рисовать текст с дробными координатами вручную.
 - Малым шрифтам (`Small`) не давать большой shadow-offset: 1 px, иначе глифы «смазываются».
-- Размеры шрифтов — через `FontSet` (48 / 24 / 19 / 15). Новый размер добавлять в `FontSet`,
-  а не создавать `GetFont(...)` по месту.
+- Размеры шрифтов — через `FontSet` (48 / 24 / 19 / 15 / 64). Новый размер добавлять в `FontSet`,
+  а не создавать `GetFont(...)` по месту. 64 — дисплейное имя на экране выбора.
 - HUD: имена бойцов рисуются сверху (`y = 16`), HP-бары начинаются с `y = 40`;
   текст не должен ложиться на полоски. Любая правка HUD проверяется `--screen fight`.
 - Вся вёрстка обязана влезать в 960×480 без обрезки; мышь переводится в виртуальные
   координаты только через `ScreenScaler.ToVirtual`.
-- Палитра и состояния фокуса/наведения — из `Rendering/MenuTheme.cs`; не плодить локальные
-  цвета, если подходит тема.
+- Палитра и состояния фокуса/наведения — из `Rendering/MenuTheme.cs` (титул/результат)
+  или `Rendering/SelectTheme.cs` (экран выбора); не плодить локальные цвета, если подходит тема.
 - Интерфейс проверять при 960×480 (скриншот из backbuffer): шрифты чёткие, ничего не съехало.
 
 ### Git-гигиена
