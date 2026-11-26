@@ -110,6 +110,8 @@ public static class SelfTest
         int checks = 0;
         var origin = new Vector2(-100f, -100f);
 
+        static Vector2 Center(Rectangle rect) => new(rect.Center.X, rect.Center.Y);
+
         void Expect(bool condition, string message)
         {
             checks++;
@@ -185,10 +187,10 @@ public static class SelfTest
         next = title.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.Exit, "«Выход» не завершает игру");
 
-        // Fighter select: Right picks the second fighter, Down moves focus to difficulty,
-        // Right switches Normal -> Hard, Enter starts that exact matchup.
+        // Detailed stats screen: Right picks the second fighter, Down moves focus to
+        // difficulty, Right switches Normal -> Hard, Enter starts that exact matchup.
         var state = new MenuState();
-        var select = new FighterSelectScreen(state, focusStart: false);
+        var select = new FighterSelectScreen(state);
         select.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
         Expect(state.SelectedFighter == FighterKind.Pantera, "стрелка вправо не выбирает второго бойца");
         select.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
@@ -199,16 +201,47 @@ public static class SelfTest
         Expect(next.Fighter == FighterKind.Pantera && next.Difficulty == BotDifficulty.Hard,
             "в команду старта не попали выбранные боец/сложность");
 
-        // «Играть» opens the screen with the start button focused, so Enter starts immediately.
-        select = new FighterSelectScreen(state, focusStart: true);
-        next = select.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
-        Expect(next.Type == MenuCommandType.StartFight, "фокус на кнопке старта не начинает бой по Enter");
+        select = new FighterSelectScreen(new MenuState());
         next = select.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.BackToTitle, "Esc не возвращает на стартовый экран");
 
+        // Difficulty is changed by a click, not by mouse hover.
+        var hoverState = new MenuState();
+        var hoverScreen = new FighterSelectScreen(hoverState);
+        var hardPill = Center(SelectLayout.DifficultyPill(2));
+        hoverScreen.Update(new MenuInput { MouseMoved = true, MousePosition = hardPill }, 1f / 60f);
+        Expect(hoverState.Difficulty == BotDifficulty.Normal,
+            "наведение на сложность не должно менять сложность");
+        next = hoverScreen.Update(new MenuInput
+        {
+            MouseMoved = true,
+            Confirm = true,
+            MousePosition = hardPill,
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Difficulty == BotDifficulty.Normal,
+            "hover по сложности не должен подменять сложность старта");
+
+        var clickState = new MenuState();
+        var clickScreen = new FighterSelectScreen(clickState);
+        next = clickScreen.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(SelectLayout.DifficultyPill(2)),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по сложности не должен начинать бой");
+        Expect(clickState.Difficulty == BotDifficulty.Hard, "клик по сложности не переключает сложность");
+
+        var headerScreen = new FighterSelectScreen(new MenuState());
+        next = headerScreen.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(SelectLayout.Header),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по заголовку не должен начинать бой");
+
         // Screen entrance and fighter-switch animations: Update-only, no GraphicsDevice.
         var animState = new MenuState();
-        var anim = new FighterSelectScreen(animState, focusStart: false);
+        var anim = new FighterSelectScreen(animState);
         anim.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
         Expect(anim.IntroProgress > 0f, "интро экрана не запускается");
 
@@ -237,7 +270,7 @@ public static class SelfTest
 
         // Input must not be blocked while the portrait is still sliding.
         var fastState = new MenuState();
-        var fast = new FighterSelectScreen(fastState, focusStart: false);
+        var fast = new FighterSelectScreen(fastState);
         fast.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
         next = fast.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
@@ -245,7 +278,7 @@ public static class SelfTest
 
         // A second direction key during the slide retargets the animation cleanly.
         var retargetState = new MenuState();
-        var retarget = new FighterSelectScreen(retargetState, focusStart: false);
+        var retarget = new FighterSelectScreen(retargetState);
         retarget.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
         retarget.Update(new MenuInput { MousePosition = origin }, 0.10f);
         retarget.Update(new MenuInput { Left = true, MousePosition = origin }, 1f / 60f);
@@ -256,21 +289,75 @@ public static class SelfTest
         Expect(!retarget.IsTransitioning && MathF.Abs(retarget.PortraitOffsetX) < 0.01f,
             "перенацеленный слайд не завершается");
 
+        // Quick character menu opened by «Играть»: portrait + slanted list, no stats.
+        var quickState = new MenuState();
+        var quick = new FighterMenuScreen(quickState);
+        quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(quick.IntroProgress > 0f, "интро быстрого меню не запускается");
+        for (int i = 0; i < 40; i++)
+            quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(quick.IntroProgress >= 1f, "интро быстрого меню не завершается");
+
+        quick.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        Expect(quickState.SelectedFighter == FighterKind.Pantera,
+            "стрелка вправо не выбирает бойца в быстром меню");
+        Expect(quick.IsTransitioning, "быстрое меню не запускает слайд портрета");
+        for (int i = 0; i < 30; i++)
+            quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(!quick.IsTransitioning && MathF.Abs(quick.PortraitOffsetX) < 0.01f,
+            "слайд быстрого меню не завершается");
+
+        quick.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        Expect(quickState.SelectedFighter == FighterKind.Andrey,
+            "Down не переключает бойца в быстром меню");
+        quick.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        next = quick.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
+            "Enter не запускает бой с выбранным бойцом в быстром меню");
+
+        // A single click on a fighter row starts the fight.
+        var quickMouseState = new MenuState();
+        var quickMouse = new FighterMenuScreen(quickMouseState);
+        next = quickMouse.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(MenuLayout.ItemRect(1)),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
+            "клик по бойцу в быстром меню не запускает бой");
+
+        next = quickMouse.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.BackToTitle, "Esc не закрывает быстрое меню");
+
+        // Clicks on the info card or on empty space to the right of a row must not start.
+        var quickBlank = new FighterMenuScreen(new MenuState());
+        next = quickBlank.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(900, 278),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по пустому месту быстрого меню начинает бой");
+
+        var quickCard = new FighterMenuScreen(new MenuState());
+        next = quickCard.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(MenuLayout.InfoCard),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по инфо-карточке начинает бой");
+
+        Expect(MenuLayout.FirstVisible(0, 4) == 0 && MenuLayout.FirstVisible(3, 4) == 1,
+            "окно списка быстрого меню не следует за выбранным бойцом");
+        Expect(SelectLayout.FirstVisible(0, 4) == 0 && SelectLayout.FirstVisible(3, 4) == 2,
+            "окно вкладок подробного экрана не следует за выбранным бойцом");
+
         // Mouse path: click a title button, the second fighter tab, a difficulty pill and Start.
         title = new TitleScreen();
         next = title.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(480, 226) }, 1f / 60f);
         Expect(next.Type == MenuCommandType.Play, "клик по «Играть» не запускает игру");
 
         state = new MenuState();
-        select = new FighterSelectScreen(state, focusStart: false);
-
-        var tabRect = SelectLayout.FighterTab(1);
-        select.Update(new MenuInput
-        {
-            MouseClicked = true,
-            MousePosition = new Vector2(tabRect.Center.X, tabRect.Center.Y),
-        }, 1f / 60f);
-        Expect(state.SelectedFighter == FighterKind.Pantera, "клик по вкладке не выбирает бойца");
+        select = new FighterSelectScreen(state);
 
         var pillRect = SelectLayout.DifficultyPill(2);
         select.Update(new MenuInput
@@ -280,15 +367,37 @@ public static class SelfTest
         }, 1f / 60f);
         Expect(state.Difficulty == BotDifficulty.Hard, "клик по кнопке сложности не переключает сложность");
 
-        var startRect = SelectLayout.StartButton;
+        var tabRect = SelectLayout.FighterTab(1);
         next = select.Update(new MenuInput
         {
             MouseClicked = true,
-            MousePosition = new Vector2(startRect.Center.X, startRect.Center.Y),
+            MousePosition = new Vector2(tabRect.Center.X, tabRect.Center.Y),
         }, 1f / 60f);
-        Expect(next.Type == MenuCommandType.StartFight, "клик по «Начать бой» не запускает бой");
+        Expect(next.Type == MenuCommandType.StartFight, "клик по бойцу не запускает бой");
         Expect(next.Fighter == FighterKind.Pantera && next.Difficulty == BotDifficulty.Hard,
-            "клик по старту не передал выбранные боец/сложность");
+            "клик по бойцу не передал выбранного бойца/сложность");
+
+        var portraitClick = new FighterSelectScreen(new MenuState());
+        next = portraitClick.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(250, 240),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Andrey,
+            "клик по портрету не запускает бой");
+
+        var clickGuard = new MenuClickGuard();
+        var clickPoint = new Vector2(480, 226);
+        var doubleClickInput = new MenuInput { MouseClicked = true, MousePosition = clickPoint };
+        Expect(!clickGuard.ShouldSuppress(0.0, doubleClickInput), "click guard подавляет клик без взвода");
+        clickGuard.Arm(0.0, clickPoint);
+        Expect(clickGuard.ShouldSuppress(0.2, doubleClickInput), "click guard не подавляет быстрый двойной клик");
+        Expect(!clickGuard.ShouldSuppress(0.2,
+                new MenuInput { MouseClicked = true, MousePosition = clickPoint + new Vector2(40, 0) }),
+            "click guard подавляет клик в другом месте");
+        Expect(!clickGuard.ShouldSuppress(0.2, new MenuInput { MousePosition = clickPoint }),
+            "click guard подавляет клавиатурный ввод");
+        Expect(!clickGuard.ShouldSuppress(0.6, doubleClickInput), "click guard подавляет медленный клик");
 
         Console.WriteLine($"[Меню и сложности] проверок={checks} провалов={failures}");
         return failures;

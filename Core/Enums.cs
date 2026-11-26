@@ -4,6 +4,9 @@ namespace DvorFight.Core;
 public enum GameScreen
 {
     Title,
+    /// <summary>Quick character menu opened by «Играть» (portrait + slanted list).</summary>
+    FighterMenu,
+    /// <summary>Detailed stats/difficulty screen opened by «Бойцы / Характеристики».</summary>
     FighterSelect,
     Fight,
 }

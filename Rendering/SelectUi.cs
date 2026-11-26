@@ -5,9 +5,9 @@ using Microsoft.Xna.Framework.Graphics;
 namespace DvorFight.Rendering;
 
 /// <summary>
-/// Drawing helpers of the fighter-select screen: angular plaques, the tracked hero name,
-/// stat cells, special rows, difficulty pills and the start button. All shapes are
-/// procedural polygons, so the screen needs no UI PNGs.
+/// Drawing helpers of the detailed fighter-select screen: angular plaques, the tracked hero
+/// name, stat cells, special rows, difficulty pills and the click-to-start prompt. All
+/// shapes are procedural polygons, so the screen needs no UI PNGs.
 /// </summary>
 internal static class SelectUi
 {
@@ -32,7 +32,7 @@ internal static class SelectUi
 
     public static void DrawHeader(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts, int selected, int total)
     {
-        var header = new Rectangle(12, 8, 168, 28);
+        Rectangle header = SelectLayout.Header;
         Vector2[] points = Plaque(header, 6, 7);
         renderer.FillPolygon(spriteBatch, points, SelectTheme.Ink * 0.78f);
         renderer.DrawPolygonBorder(spriteBatch, points, SelectTheme.Cyan * 0.50f, 1f);
@@ -74,7 +74,7 @@ internal static class SelectUi
 
             Color fill = isSelected
                 ? SelectTheme.Cyan * (0.90f + 0.08f * pulse)
-                : hovered ? SelectTheme.Ink * 0.88f : SelectTheme.Ink * 0.80f;
+                : SelectTheme.Ink;
             Color border = isSelected
                 ? Color.Lerp(SelectTheme.Cyan, SelectTheme.White, pulse * 0.35f)
                 : hovered ? SelectTheme.Cyan * 0.55f : SelectTheme.Azure * 0.45f;
@@ -261,8 +261,8 @@ internal static class SelectUi
         float time)
     {
         UI.Text(spriteBatch, fonts.Small, "СЛОЖНОСТЬ БОТА",
-            new Vector2(SelectLayout.ContentX, 328),
-            focused ? SelectTheme.Cyan : SelectTheme.Muted);
+            new Vector2(SelectLayout.ContentX, 324),
+            focused ? SelectTheme.Cyan : SelectTheme.Ice);
 
         float pulse = MenuTheme.Pulse(time);
 
@@ -275,7 +275,7 @@ internal static class SelectUi
 
             Color fill = isSelected
                 ? SelectTheme.Cyan * (0.86f + 0.10f * pulse)
-                : hovered ? SelectTheme.Ink * 0.90f : SelectTheme.Ink * 0.80f;
+                : SelectTheme.Ink;
             Color border = isSelected
                 ? Color.Lerp(SelectTheme.Cyan, SelectTheme.White, pulse * 0.40f)
                 : SelectTheme.Cyan * (hovered ? 0.60f : 0.30f);
@@ -293,68 +293,26 @@ internal static class SelectUi
             spriteBatch,
             fonts.Small,
             DifficultyCatalog.All[selected].Description,
-            new Vector2(SelectLayout.ContentX, 376),
+            new Vector2(SelectLayout.ContentX, 382),
             SelectLayout.ContentWidth,
             SelectTheme.Muted,
             1);
     }
 
-    public static void DrawStartButton(
-        SpriteBatch spriteBatch,
-        Renderer renderer,
-        FontSet fonts,
-        bool focused,
-        bool hovered,
-        float time)
+    public static void DrawStartPrompt(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts)
     {
-        Rectangle rect = SelectLayout.StartButton;
-        Vector2[] points = Plaque(rect, 12, 14);
-        float pulse = MenuTheme.Pulse(time);
-
-        Color fill = focused
-            ? SelectTheme.Cyan
-            : hovered ? SelectTheme.Ice : SelectTheme.Ink * 0.80f;
-        Color text = focused || hovered ? SelectTheme.Ink : SelectTheme.Paper;
-        Color border = focused
-            ? Color.Lerp(SelectTheme.Cyan, SelectTheme.White, pulse * 0.50f)
-            : SelectTheme.Cyan * (hovered ? 0.75f : 0.45f);
-
-        renderer.FillPolygon(spriteBatch, points, fill);
-        renderer.DrawPolygonBorder(spriteBatch, points, border, focused ? 3f : 2f);
-
-        for (int i = 0; i < 6; i++)
-        {
-            float x = rect.X + 28 + i * 64;
-            renderer.DrawLine(spriteBatch,
-                new Vector2(x, rect.Bottom - 6),
-                new Vector2(x + 22, rect.Y + 6),
-                SelectTheme.Ink * 0.08f,
-                6f);
-        }
-
-        if (focused)
-        {
-            renderer.FillRect(spriteBatch,
-                new Rectangle(rect.X + 10, rect.Y + 8, 4, rect.Height - 16),
-                SelectTheme.Ink * 0.75f);
-        }
-
-        UI.Text(spriteBatch, fonts.Big, "НАЧАТЬ БОЙ",
-            new Vector2(rect.Center.X - 10, rect.Center.Y), text, TextAlign.Center);
-
-        var arrow = new[]
-        {
-            new Vector2(rect.Right - 36, rect.Center.Y - 6),
-            new Vector2(rect.Right - 36, rect.Center.Y + 6),
-            new Vector2(rect.Right - 24, rect.Center.Y),
-        };
-        renderer.FillPolygon(spriteBatch, arrow, text);
+        UI.Text(spriteBatch, fonts.Name, "КЛИК ПО БОЙЦУ / ENTER — В БОЙ",
+            new Vector2(SelectLayout.ContentX, 404),
+            SelectTheme.Paper * 0.92f);
+        renderer.FillRect(spriteBatch,
+            new Rectangle(SelectLayout.ContentX, 428, 72, 4),
+            SelectTheme.Crimson);
     }
 
     public static void DrawHint(SpriteBatch spriteBatch, FontSet fonts)
     {
         UI.Text(spriteBatch, fonts.Small,
-            "← → БОЕЦ · ↑ ↓ РАЗДЕЛ · ENTER БОЙ",
+            "↑ ↓ — РАЗДЕЛ · ESC — НАЗАД",
             new Vector2(SelectLayout.ContentX, 452),
             SelectTheme.Ice * 0.72f,
             TextAlign.Left);

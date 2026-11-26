@@ -32,9 +32,6 @@ public sealed class FighterProfile
     /// <summary>Whether the fighter ever gets heavy (morphed) normal attacks.</summary>
     public bool HasHeavyAttacks { get; }
 
-    /// <summary>Short label shown inside the narrow card (first tagline segment).</summary>
-    public string CardTagline => Tagline.Split('·')[0].Trim();
-
     public FighterProfile(
         FighterKind kind,
         string name,

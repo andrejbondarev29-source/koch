@@ -3,8 +3,8 @@ using FontStashSharp;
 namespace DvorFight.Rendering;
 
 /// <summary>
-/// The four DynamicSpriteFont sizes used by menus, HUD and the result overlay.
-/// Keeping them in one object avoids threading four parameters through every screen.
+/// The five DynamicSpriteFont sizes used by menus, HUD and the result overlay.
+/// Keeping them in one object avoids threading five parameters through every screen.
 /// </summary>
 public sealed class FontSet
 {

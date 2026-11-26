@@ -53,7 +53,8 @@
 | Бойцы, физика, атаки, спецухи | `Domain/Fighter.cs`, `Domain/Andrey.cs`, `Domain/Pantera.cs`, `Domain/Projectile.cs`, `Domain/Shoe.cs`, `Domain/Dancer.cs`, `Domain/Spark.cs` |
 | Создание бойцов и ростер | `Domain/FighterFactory.cs`; данные карточек — `Rendering/FighterCatalog.cs` |
 | Бой как сессия (hit-stop, KO, cutscene, сложность) | `Combat/FightSession.cs` |
-| Экраны меню | `Rendering/TitleScreen.cs`, `Rendering/FighterSelectScreen.cs`, `Rendering/ResultOverlay.cs` |
+| Экраны меню | `Rendering/TitleScreen.cs`, `Rendering/FighterMenuScreen.cs`, `Rendering/FighterSelectScreen.cs`, `Rendering/ResultOverlay.cs` |
+| Быстрое меню выбора | `Rendering/FighterMenuScreen.cs`, `MenuLayout.cs`, `MenuUi.cs`, `MenuClickGuard.cs` |
 | Экран выбора: фон, осколки, портрет, UI | `Rendering/SelectBackdrop.cs`, `ShardField.cs`, `PortraitStage.cs`, `SelectUi.cs`, `SelectTheme.cs`, `SelectMotion.cs`, `SelectLayout.cs` |
 | Общие основы меню | `Rendering/MenuScreen.cs`, `MenuInput.cs`, `MenuCommand.cs`, `MenuState.cs`, `MenuTheme.cs`, `FontSet.cs`, `Rendering/DifficultyCatalog.cs` |
 | HUD, шрифты, выравнивание | `Rendering/Hud.cs`, `Rendering/UI.cs`, `Rendering/FontSet.cs` |
@@ -65,6 +66,10 @@
 
 Примечание: `FighterCatalog` — это UI-данные карточек (имена, описания, превью-анимации),
 поэтому он лежит в `Rendering/`, а не в `Domain/`. Доменный код о нём не знает.
+`FighterMenuScreen` — быстрый выбор по кнопке «Играть» (только портрет и наклонный список);
+`FighterSelectScreen` — подробный экран по кнопке «Бойцы / Характеристики» (статы, спецухи,
+сложность). На обоих экранах отдельной кнопки старта нет: бой запускается кликом по бойцу/
+портрету или `Enter`. `MenuCommand.Play` ведёт в первый, `MenuCommand.OpenFighters` — во второй.
 
 ### Работа с числами и данными
 
@@ -96,8 +101,8 @@
   экраны не вызывают MonoGame Input напрямую.
 - Экраны меню остаются headless-тестируемыми: конструктор и `Update` не создают
   `Texture2D` и не обращаются к `GraphicsDevice`. GPU-ресурсы (фон, glow, осколки)
-  создаются лениво в `Draw` и кешируются; это относится к `FighterSelectScreen` и его
-  помощникам `SelectBackdrop`/`ShardField`/`PortraitStage`.
+  создаются лениво в `Draw` и кешируются; это относится к `FighterMenuScreen`/
+  `FighterSelectScreen` и их помощникам `SelectBackdrop`/`ShardField`/`PortraitStage`.
 - Доменный слой (`Domain`, `Combat`, `AI`, `Config`) не должен зависеть от меню.
   Отрисовка сущностей — через `Draw(..., SpriteBatch, Renderer)`.
 - Бойцы создаются через `FighterFactory.Create`, а не тернарниками в `FightSession`.
@@ -179,12 +184,14 @@ run.cmd --selftest
 ```powershell
 $dll = ".\bin\Release\net8.0\DvorFight.dll"
 & "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-title.png --screen title
-& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters.png --screen fighters
-& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters-pantera-hard.png --screen fighters --fighter pantera --difficulty hard
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-character-select.png --screen fighters
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters.png --screen details
+& "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\menu-fighters-pantera-hard.png --screen details --fighter pantera --difficulty hard
 & "$env:DOTNET_ROOT\dotnet.exe" $dll --screenshot screenshots\fight-hud.png --screen fight
 ```
 
-Флаги: `--screen title|fighters|fight`, `--fighter andrey|pantera`,
+Флаги: `--screen title|fighters|details|fight` (алиасы: `fighters` — `select`/`menu`,
+`details` — `stats`), `--fighter andrey|pantera`,
 `--difficulty easy|normal|hard`, `--fight`. Скриншот делается после ~90 кадров, затем игра
 завершается. Если PNG используются в README — не забыть `git add screenshots/`.
 

@@ -6,11 +6,10 @@ using Microsoft.Xna.Framework.Graphics;
 namespace DvorFight.Rendering;
 
 /// <summary>
-/// Character / stats screen: a large animated portrait on the left, the fighter's name and
-/// stats on the right, the bot difficulty and the start button. All navigation works with
-/// the keyboard and the mouse; switching fighters plays a short eased slide while the
-/// portrait keeps breathing. The screen is data-driven from <see cref="FighterCatalog"/>,
-/// so a new fighter only needs a new catalog entry and a portrait PNG.
+/// Detailed character / stats screen: a large animated portrait on the left, the fighter's
+/// name and stats on the right, the bot difficulty and a click-to-start prompt. A click on
+/// a fighter tab or on the portrait starts the fight; there is no separate start button.
+/// Switching fighters plays a short eased slide while the portrait keeps breathing.
 /// </summary>
 public sealed class FighterSelectScreen : MenuScreen
 {
@@ -18,7 +17,6 @@ public sealed class FighterSelectScreen : MenuScreen
     {
         Fighters,
         Difficulty,
-        Start,
     }
 
     private readonly MenuState _state;
@@ -36,13 +34,13 @@ public sealed class FighterSelectScreen : MenuScreen
     private float _slide = 1f;
     private int _slideDir = 1;
 
-    public FighterSelectScreen(MenuState state, bool focusStart)
+    public FighterSelectScreen(MenuState state)
     {
         _state = state;
         _selected = Math.Clamp(FighterCatalog.IndexOf(state.SelectedFighter), 0, Math.Max(0, FighterCatalog.All.Count - 1));
         _previousSelected = _selected;
         _difficulty = IndexOfDifficulty(state.Difficulty);
-        _focus = focusStart ? FocusArea.Start : FocusArea.Fighters;
+        _focus = FocusArea.Fighters;
     }
 
     /// <summary>Test hook: true while the portrait is sliding from the previous fighter.</summary>
@@ -112,6 +110,7 @@ public sealed class FighterSelectScreen : MenuScreen
 
             _focus = FocusArea.Fighters;
             SelectFighterIndex(index);
+            return Start();
         }
 
         for (int i = 0; i < DifficultyCatalog.All.Count; i++)
@@ -124,7 +123,9 @@ public sealed class FighterSelectScreen : MenuScreen
             SyncState();
         }
 
-        if (Clicked(SelectLayout.StartButton, input))
+        // A click on the large portrait is the primary "start fight" gesture now that
+        // there is no start button.
+        if (Clicked(SelectLayout.PortraitClick, input) && !Contains(SelectLayout.Header, input.MousePosition))
             return Start();
 
         if (input.Back)
@@ -145,7 +146,7 @@ public sealed class FighterSelectScreen : MenuScreen
         _backdrop.Draw(spriteBatch, renderer, _time);
         _shards.DrawBack(spriteBatch, renderer, _time);
 
-        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro / 0.75f));
+        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro));
         float introText = SelectMotion.EaseOutQuint(SelectMotion.Clamp01((_intro - 0.08f) / 0.70f));
         float p = _slide;
         bool swapping = p < 1f;
@@ -224,8 +225,7 @@ public sealed class FighterSelectScreen : MenuScreen
 
         SelectUi.DrawDifficulty(spriteBatch, renderer, fonts, _difficulty,
             _focus == FocusArea.Difficulty, MousePosition, _time);
-        SelectUi.DrawStartButton(spriteBatch, renderer, fonts,
-            _focus == FocusArea.Start, Contains(SelectLayout.StartButton, MousePosition), _time);
+        SelectUi.DrawStartPrompt(spriteBatch, renderer, fonts);
         SelectUi.DrawHint(spriteBatch, fonts);
     }
 
@@ -233,7 +233,7 @@ public sealed class FighterSelectScreen : MenuScreen
     {
         x = 0f;
         y = 0f;
-        if (!Contains(SelectLayout.Stage, MousePosition))
+        if (!Contains(SelectLayout.PortraitClick, MousePosition))
             return;
 
         x = (MousePosition.X - SelectLayout.PortraitCenterX) / SelectLayout.PortraitCenterX * -6f;
@@ -252,28 +252,11 @@ public sealed class FighterSelectScreen : MenuScreen
             SelectFighterIndex(index);
             return;
         }
-
-        for (int i = 0; i < DifficultyCatalog.All.Count; i++)
-        {
-            if (!Contains(SelectLayout.DifficultyPill(i), mouse))
-                continue;
-
-            _focus = FocusArea.Difficulty;
-            if (i != _difficulty)
-            {
-                _difficulty = i;
-                SyncState();
-            }
-            return;
-        }
-
-        if (Contains(SelectLayout.StartButton, mouse))
-            _focus = FocusArea.Start;
     }
 
     private void MoveFocus(int delta)
     {
-        int count = 3;
+        int count = 2;
         _focus = (FocusArea)(((int)_focus + delta + count) % count);
     }
 

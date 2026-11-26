@@ -17,7 +17,8 @@ if (screenIndex >= 0 && screenIndex + 1 < args.Length)
 {
     game.InitialScreen = args[screenIndex + 1].ToLowerInvariant() switch
     {
-        "fighters" or "select" => GameScreen.FighterSelect,
+        "fighters" or "select" or "menu" => GameScreen.FighterMenu,
+        "details" or "stats" => GameScreen.FighterSelect,
         "fight" => GameScreen.Fight,
         _ => GameScreen.Title,
     };

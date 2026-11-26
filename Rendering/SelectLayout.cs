@@ -10,7 +10,6 @@ namespace DvorFight.Rendering;
 /// </summary>
 internal static class SelectLayout
 {
-    public const int StageWidth = 512;
     public const int ContentX = 528;
     public const int ContentWidth = 408;
     public const int ContentRight = ContentX + ContentWidth;
@@ -20,16 +19,17 @@ internal static class SelectLayout
     public const float PortraitCenterY = 240f;
     public const float PortraitHeight = 560f;
 
-    public static readonly Rectangle Stage = new(0, 0, StageWidth, Balance.ViewHeight);
+    /// <summary>Clickable portrait area: the paper plaque/portrait, not the whole left half.</summary>
+    public static readonly Rectangle PortraitClick = new(16, 0, 456, Balance.ViewHeight);
 
-    public static readonly Rectangle HeroName = new(ContentX, 40, ContentWidth, 76);
-    public static readonly Rectangle StartButton = new(ContentX, 398, ContentWidth, 46);
+    /// <summary>Static "ВЫБОР БОЙЦА" plaque; clicking it must not start a fight.</summary>
+    public static readonly Rectangle Header = new(12, 8, 168, 28);
 
     public static Rectangle FighterTab(int slot) =>
         new(20, 384 + slot * 36, 148, 30);
 
     public static Rectangle DifficultyPill(int index) =>
-        new(ContentX + index * 140, 340, 128, 30);
+        new(ContentX + index * 140, 346, 128, 30);
 
     public static int FirstVisible(int selected, int total) =>
         Math.Clamp(selected - 1, 0, Math.Max(0, total - VisibleTabs));

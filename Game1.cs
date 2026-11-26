@@ -1,3 +1,4 @@
+using System.Reflection;
 using DvorFight.Audio;
 using DvorFight.Combat;
 using DvorFight.Config;
@@ -33,15 +34,21 @@ public class Game1 : Game
     private ResultOverlay _resultOverlay = null!;
     private AudioEngine _audio = null!;
     private InputController _input = null!;
+    private readonly InputController _neutralInput = new();
     private FightSession _session = null!;
 
     private readonly MenuState _menuState = new();
     private MenuScreen _menuScreen = null!;
 
     private GameScreen _screen = GameScreen.Title;
+    private GameScreen _lastSelectScreen = GameScreen.FighterMenu;
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;
     private int _framesDrawn;
+
+    // Swallow the second press of a double-click that opened a new menu screen, so a
+    // double-click on «Играть» / «Бойцы» cannot click straight through to "start fight".
+    private readonly MenuClickGuard _menuClickGuard = new();
 
     /// <summary>When set, the game renders a few frames, saves a PNG and exits (dev aid).</summary>
     public string? ScreenshotPath { get; set; }
@@ -62,12 +69,20 @@ public class Game1 : Game
         IsMouseVisible = true;
     }
 
+    private static string GetProductVersion()
+    {
+        string version = typeof(Game1).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.01";
+        int metadataSeparator = version.IndexOf('+');
+        return metadataSeparator >= 0 ? version[..metadataSeparator] : version;
+    }
+
     protected override void Initialize()
     {
         _graphics.PreferredBackBufferWidth = Balance.ViewWidth;
         _graphics.PreferredBackBufferHeight = Balance.ViewHeight;
         _graphics.ApplyChanges();
-        Window.Title = "Дворовой файтинг";
+        Window.Title = $"Дворовой файтинг {GetProductVersion()}";
         base.Initialize();
     }
 
@@ -123,18 +138,29 @@ public class Game1 : Game
         _input = new InputController();
         _session = new FightSession(_audio, _assets.LoadCutsceneFrames());
 
+        // Avoid a phantom edge-trigger / hover on the very first frame: the default
+        // KeyboardState/MouseState are "empty" and differ from the real devices.
+        _prevKeyboard = Keyboard.GetState();
+        _prevMouse = Mouse.GetState();
+
         _menuState.SelectedFighter = InitialFighter;
         _menuState.Difficulty = InitialDifficulty;
 
         _screen = InitialScreen;
+        _lastSelectScreen = _screen == GameScreen.FighterSelect
+            ? GameScreen.FighterSelect
+            : GameScreen.FighterMenu;
         switch (_screen)
         {
             case GameScreen.Fight:
                 _session.Start(_menuState.SelectedFighter, _menuState.Difficulty);
-                _menuScreen = CreateFighterSelect(focusStart: false);
+                _menuScreen = CreateFighterMenu();
+                break;
+            case GameScreen.FighterMenu:
+                _menuScreen = CreateFighterMenu();
                 break;
             case GameScreen.FighterSelect:
-                _menuScreen = CreateFighterSelect(focusStart: false);
+                _menuScreen = CreateFighterSelect();
                 break;
             default:
                 _screen = GameScreen.Title;
@@ -155,14 +181,14 @@ public class Game1 : Game
         if (_screen == GameScreen.Fight)
             HandleFight(dt, keyboard, mouse);
         else
-            HandleMenu(dt, keyboard, mouse);
+            HandleMenu(dt, keyboard, mouse, gameTime.TotalGameTime.TotalSeconds);
 
         _prevKeyboard = keyboard;
         _prevMouse = mouse;
         base.Update(gameTime);
     }
 
-    private void HandleMenu(float dt, KeyboardState keyboard, MouseState mouse)
+    private void HandleMenu(float dt, KeyboardState keyboard, MouseState mouse, double now)
     {
         var input = new MenuInput
         {
@@ -181,14 +207,26 @@ public class Game1 : Game
                 : 0,
         };
 
+        // Screenshot mode must be deterministic: ignore the real mouse so a stray click
+        // that activates the window cannot start a fight before the PNG is captured.
+        if (ScreenshotPath != null)
+            input = new MenuInput { MousePosition = new Vector2(-100f, -100f) };
+
+        if (_menuClickGuard.ShouldSuppress(now, input))
+            input = input.WithoutMouseClick();
+
         var command = _menuScreen.Update(input, dt);
         switch (command.Type)
         {
             case MenuCommandType.Play:
-                OpenFighterSelect(focusStart: true);
+                OpenFighterMenu();
+                if (input.MouseClicked)
+                    _menuClickGuard.Arm(now, input.MousePosition);
                 break;
             case MenuCommandType.OpenFighters:
-                OpenFighterSelect(focusStart: false);
+                OpenFighterSelect();
+                if (input.MouseClicked)
+                    _menuClickGuard.Arm(now, input.MousePosition);
                 break;
             case MenuCommandType.StartFight:
                 StartFight(command.Fighter, command.Difficulty);
@@ -204,32 +242,59 @@ public class Game1 : Game
 
     private void HandleFight(float dt, KeyboardState keyboard, MouseState mouse)
     {
-        foreach (var command in _input.ConsumeCommands())
-            _session.Player.IssueCommand(command, _session);
+        if (ScreenshotPath == null)
+        {
+            foreach (var command in _input.ConsumeCommands())
+                _session.Player.IssueCommand(command, _session);
+        }
 
-        _session.Update(dt, _input);
+        _session.Update(dt, ScreenshotPath != null ? _neutralInput : _input);
+
+        // Keep the fight screenshot deterministic: no stray Esc/rematch/attack input.
+        if (ScreenshotPath != null)
+            return;
 
         if (!_session.Playing)
         {
             if (Pressed(keyboard, Keys.R) || Pressed(keyboard, Keys.Enter) || Click(mouse))
                 StartFight(_session.Player.Kind, _session.Difficulty);
             else if (Pressed(keyboard, Keys.Escape))
-                OpenFighterSelect(focusStart: false);
+                OpenLastSelect();
         }
         else if (Pressed(keyboard, Keys.Escape))
         {
-            OpenFighterSelect(focusStart: false);
+            OpenLastSelect();
         }
     }
 
-    private FighterSelectScreen CreateFighterSelect(bool focusStart) =>
-        new(_menuState, focusStart);
+    private FighterMenuScreen CreateFighterMenu() =>
+        new(_menuState);
 
-    private void OpenFighterSelect(bool focusStart)
+    private FighterSelectScreen CreateFighterSelect() =>
+        new(_menuState);
+
+    private void OpenFighterMenu()
     {
         _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
-        _menuScreen = CreateFighterSelect(focusStart);
+        _menuScreen = CreateFighterMenu();
+        _screen = GameScreen.FighterMenu;
+        _lastSelectScreen = _screen;
+    }
+
+    private void OpenFighterSelect()
+    {
+        _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
+        _menuScreen = CreateFighterSelect();
         _screen = GameScreen.FighterSelect;
+        _lastSelectScreen = _screen;
+    }
+
+    private void OpenLastSelect()
+    {
+        if (_lastSelectScreen == GameScreen.FighterSelect)
+            OpenFighterSelect();
+        else
+            OpenFighterMenu();
     }
 
     private void GoToTitle()
@@ -244,6 +309,8 @@ public class Game1 : Game
         _ = _input.ConsumeCommands(); // discard stale menu commands
         _menuState.SelectedFighter = kind;
         _menuState.Difficulty = difficulty;
+        if (_screen == GameScreen.FighterMenu || _screen == GameScreen.FighterSelect)
+            _lastSelectScreen = _screen;
         _session.Start(kind, difficulty);
         _screen = GameScreen.Fight;
     }
