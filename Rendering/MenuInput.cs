@@ -22,4 +22,22 @@ public readonly struct MenuInput
 
     /// <summary>Direct fighter pick via number keys: 1 or 2 (0 when unused).</summary>
     public int FighterShortcut { get; init; }
+
+    /// <summary>
+    /// Same snapshot with the mouse click removed. Used to swallow the second press of a
+    /// double-click that opened a new menu screen, without blocking keyboard input.
+    /// </summary>
+    public MenuInput WithoutMouseClick() => new()
+    {
+        Up = Up,
+        Down = Down,
+        Left = Left,
+        Right = Right,
+        Confirm = Confirm,
+        Back = Back,
+        MousePosition = MousePosition,
+        MouseMoved = MouseMoved,
+        MouseClicked = false,
+        FighterShortcut = FighterShortcut,
+    };
 }

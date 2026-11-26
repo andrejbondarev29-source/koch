@@ -50,7 +50,7 @@
 | Создание бойцов и ростер | `Domain/FighterFactory.cs`; данные карточек — `Rendering/FighterCatalog.cs` |
 | Бой как сессия (hit-stop, KO, cutscene, сложность) | `Combat/FightSession.cs` |
 | Экраны меню | `Rendering/TitleScreen.cs`, `Rendering/FighterMenuScreen.cs`, `Rendering/FighterSelectScreen.cs`, `Rendering/ResultOverlay.cs` |
-| Быстрое меню выбора | `Rendering/FighterMenuScreen.cs`, `MenuLayout.cs`, `MenuUi.cs` |
+| Быстрое меню выбора | `Rendering/FighterMenuScreen.cs`, `MenuLayout.cs`, `MenuUi.cs`, `MenuClickGuard.cs` |
 | Экран выбора: фон, осколки, портрет, UI | `Rendering/SelectBackdrop.cs`, `ShardField.cs`, `PortraitStage.cs`, `SelectUi.cs`, `SelectTheme.cs`, `SelectMotion.cs`, `SelectLayout.cs` |
 | Общие основы меню | `Rendering/MenuScreen.cs`, `MenuInput.cs`, `MenuCommand.cs`, `MenuState.cs`, `MenuTheme.cs`, `FontSet.cs`, `Rendering/DifficultyCatalog.cs` |
 | HUD, шрифты, выравнивание | `Rendering/Hud.cs`, `Rendering/UI.cs`, `Rendering/FontSet.cs` |

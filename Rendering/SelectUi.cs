@@ -32,7 +32,7 @@ internal static class SelectUi
 
     public static void DrawHeader(SpriteBatch spriteBatch, Renderer renderer, FontSet fonts, int selected, int total)
     {
-        var header = new Rectangle(12, 8, 168, 28);
+        Rectangle header = SelectLayout.Header;
         Vector2[] points = Plaque(header, 6, 7);
         renderer.FillPolygon(spriteBatch, points, SelectTheme.Ink * 0.78f);
         renderer.DrawPolygonBorder(spriteBatch, points, SelectTheme.Cyan * 0.50f, 1f);
@@ -74,7 +74,7 @@ internal static class SelectUi
 
             Color fill = isSelected
                 ? SelectTheme.Cyan * (0.90f + 0.08f * pulse)
-                : hovered ? SelectTheme.Ink * 0.88f : SelectTheme.Ink * 0.80f;
+                : SelectTheme.Ink;
             Color border = isSelected
                 ? Color.Lerp(SelectTheme.Cyan, SelectTheme.White, pulse * 0.35f)
                 : hovered ? SelectTheme.Cyan * 0.55f : SelectTheme.Azure * 0.45f;
@@ -262,7 +262,7 @@ internal static class SelectUi
     {
         UI.Text(spriteBatch, fonts.Small, "СЛОЖНОСТЬ БОТА",
             new Vector2(SelectLayout.ContentX, 324),
-            focused ? SelectTheme.Cyan : SelectTheme.Ice * 0.80f);
+            focused ? SelectTheme.Cyan : SelectTheme.Ice);
 
         float pulse = MenuTheme.Pulse(time);
 
@@ -275,7 +275,7 @@ internal static class SelectUi
 
             Color fill = isSelected
                 ? SelectTheme.Cyan * (0.86f + 0.10f * pulse)
-                : hovered ? SelectTheme.Ink * 0.90f : SelectTheme.Ink * 0.80f;
+                : SelectTheme.Ink;
             Color border = isSelected
                 ? Color.Lerp(SelectTheme.Cyan, SelectTheme.White, pulse * 0.40f)
                 : SelectTheme.Cyan * (hovered ? 0.60f : 0.30f);

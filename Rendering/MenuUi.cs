@@ -92,7 +92,7 @@ internal static class MenuUi
                 renderer.FillPolygon(spriteBatch, marker, SelectTheme.Crimson);
             }
 
-            Color main = isSelected ? SelectTheme.Paper : SelectTheme.Cyan * 0.64f;
+            Color main = isSelected ? SelectTheme.Paper : SelectTheme.Cyan;
             Color shadow = isSelected ? SelectTheme.Crimson : Color.Transparent;
 
             DrawSlantedText(

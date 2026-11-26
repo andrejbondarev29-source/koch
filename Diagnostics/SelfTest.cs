@@ -205,6 +205,40 @@ public static class SelfTest
         next = select.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.BackToTitle, "Esc не возвращает на стартовый экран");
 
+        // Difficulty is changed by a click, not by mouse hover.
+        var hoverState = new MenuState();
+        var hoverScreen = new FighterSelectScreen(hoverState);
+        var hardPill = Center(SelectLayout.DifficultyPill(2));
+        hoverScreen.Update(new MenuInput { MouseMoved = true, MousePosition = hardPill }, 1f / 60f);
+        Expect(hoverState.Difficulty == BotDifficulty.Normal,
+            "наведение на сложность не должно менять сложность");
+        next = hoverScreen.Update(new MenuInput
+        {
+            MouseMoved = true,
+            Confirm = true,
+            MousePosition = hardPill,
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Difficulty == BotDifficulty.Normal,
+            "hover по сложности не должен подменять сложность старта");
+
+        var clickState = new MenuState();
+        var clickScreen = new FighterSelectScreen(clickState);
+        next = clickScreen.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(SelectLayout.DifficultyPill(2)),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по сложности не должен начинать бой");
+        Expect(clickState.Difficulty == BotDifficulty.Hard, "клик по сложности не переключает сложность");
+
+        var headerScreen = new FighterSelectScreen(new MenuState());
+        next = headerScreen.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(SelectLayout.Header),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по заголовку не должен начинать бой");
+
         // Screen entrance and fighter-switch animations: Update-only, no GraphicsDevice.
         var animState = new MenuState();
         var anim = new FighterSelectScreen(animState);
@@ -295,6 +329,28 @@ public static class SelfTest
         next = quickMouse.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
         Expect(next.Type == MenuCommandType.BackToTitle, "Esc не закрывает быстрое меню");
 
+        // Clicks on the info card or on empty space to the right of a row must not start.
+        var quickBlank = new FighterMenuScreen(new MenuState());
+        next = quickBlank.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = new Vector2(900, 278),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по пустому месту быстрого меню начинает бой");
+
+        var quickCard = new FighterMenuScreen(new MenuState());
+        next = quickCard.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(MenuLayout.InfoCard),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.None, "клик по инфо-карточке начинает бой");
+
+        Expect(MenuLayout.FirstVisible(0, 4) == 0 && MenuLayout.FirstVisible(3, 4) == 1,
+            "окно списка быстрого меню не следует за выбранным бойцом");
+        Expect(SelectLayout.FirstVisible(0, 4) == 0 && SelectLayout.FirstVisible(3, 4) == 2,
+            "окно вкладок подробного экрана не следует за выбранным бойцом");
+
         // Mouse path: click a title button, the second fighter tab, a difficulty pill and Start.
         title = new TitleScreen();
         next = title.Update(new MenuInput { MouseClicked = true, MousePosition = new Vector2(480, 226) }, 1f / 60f);
@@ -329,6 +385,19 @@ public static class SelfTest
         }, 1f / 60f);
         Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Andrey,
             "клик по портрету не запускает бой");
+
+        var clickGuard = new MenuClickGuard();
+        var clickPoint = new Vector2(480, 226);
+        var doubleClickInput = new MenuInput { MouseClicked = true, MousePosition = clickPoint };
+        Expect(!clickGuard.ShouldSuppress(0.0, doubleClickInput), "click guard подавляет клик без взвода");
+        clickGuard.Arm(0.0, clickPoint);
+        Expect(clickGuard.ShouldSuppress(0.2, doubleClickInput), "click guard не подавляет быстрый двойной клик");
+        Expect(!clickGuard.ShouldSuppress(0.2,
+                new MenuInput { MouseClicked = true, MousePosition = clickPoint + new Vector2(40, 0) }),
+            "click guard подавляет клик в другом месте");
+        Expect(!clickGuard.ShouldSuppress(0.2, new MenuInput { MousePosition = clickPoint }),
+            "click guard подавляет клавиатурный ввод");
+        Expect(!clickGuard.ShouldSuppress(0.6, doubleClickInput), "click guard подавляет медленный клик");
 
         Console.WriteLine($"[Меню и сложности] проверок={checks} провалов={failures}");
         return failures;

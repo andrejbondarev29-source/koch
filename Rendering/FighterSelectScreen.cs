@@ -125,7 +125,7 @@ public sealed class FighterSelectScreen : MenuScreen
 
         // A click on the large portrait is the primary "start fight" gesture now that
         // there is no start button.
-        if (Clicked(SelectLayout.Stage, input))
+        if (Clicked(SelectLayout.PortraitClick, input) && !Contains(SelectLayout.Header, input.MousePosition))
             return Start();
 
         if (input.Back)
@@ -146,7 +146,7 @@ public sealed class FighterSelectScreen : MenuScreen
         _backdrop.Draw(spriteBatch, renderer, _time);
         _shards.DrawBack(spriteBatch, renderer, _time);
 
-        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro / 0.75f));
+        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro));
         float introText = SelectMotion.EaseOutQuint(SelectMotion.Clamp01((_intro - 0.08f) / 0.70f));
         float p = _slide;
         bool swapping = p < 1f;
@@ -233,7 +233,7 @@ public sealed class FighterSelectScreen : MenuScreen
     {
         x = 0f;
         y = 0f;
-        if (!Contains(SelectLayout.Stage, MousePosition))
+        if (!Contains(SelectLayout.PortraitClick, MousePosition))
             return;
 
         x = (MousePosition.X - SelectLayout.PortraitCenterX) / SelectLayout.PortraitCenterX * -6f;
@@ -250,20 +250,6 @@ public sealed class FighterSelectScreen : MenuScreen
 
             _focus = FocusArea.Fighters;
             SelectFighterIndex(index);
-            return;
-        }
-
-        for (int i = 0; i < DifficultyCatalog.All.Count; i++)
-        {
-            if (!Contains(SelectLayout.DifficultyPill(i), mouse))
-                continue;
-
-            _focus = FocusArea.Difficulty;
-            if (i != _difficulty)
-            {
-                _difficulty = i;
-                SyncState();
-            }
             return;
         }
     }

@@ -58,15 +58,24 @@ public sealed class FighterMenuScreen : MenuScreen
                 SelectFighterIndex(shortcut);
         }
 
-        if (input.Up)
-            SelectFighter(-1);
-        if (input.Down)
-            SelectFighter(1);
+        if (input.Up || input.Down || input.Left || input.Right)
+        {
+            int delta = 0;
+            if (input.Up)
+                delta--;
+            if (input.Down)
+                delta++;
+            if (delta == 0)
+            {
+                if (input.Right)
+                    delta = 1;
+                else if (input.Left)
+                    delta = -1;
+            }
 
-        if (input.Left)
-            SelectFighter(-1);
-        if (input.Right)
-            SelectFighter(1);
+            if (delta != 0)
+                SelectFighter(delta);
+        }
 
         if (input.MouseMoved)
             UpdateHover(input.MousePosition);
@@ -82,8 +91,7 @@ public sealed class FighterMenuScreen : MenuScreen
         }
 
         // Clicking the large portrait is the same "start fight" gesture.
-        var stage = new Rectangle(0, 0, 512, Balance.ViewHeight);
-        if (Clicked(stage, input))
+        if (Clicked(SelectLayout.PortraitClick, input) && !Contains(MenuLayout.InfoCard, input.MousePosition))
             return Start();
 
         if (input.Back)
@@ -102,7 +110,7 @@ public sealed class FighterMenuScreen : MenuScreen
         _backdrop.Draw(spriteBatch, renderer, _time);
         _shards.DrawBack(spriteBatch, renderer, _time);
 
-        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro / 0.75f));
+        float intro = SelectMotion.EaseOutQuint(SelectMotion.Clamp01(_intro));
         float p = _slide;
         bool swapping = p < 1f;
 
@@ -127,8 +135,8 @@ public sealed class FighterMenuScreen : MenuScreen
             var previous = FighterCatalog.All[_previousSelected];
             float previousTilt = MathF.Sin(_time * 0.70f + _previousSelected * 1.7f) * SelectMotion.IdleTilt;
             var previousCenter = new Vector2(
-                MenuLayout.PortraitCenterX + sway + parallaxX + outX,
-                MenuLayout.PortraitCenterY + bob + parallaxY + introY);
+                SelectLayout.PortraitCenterX + sway + parallaxX + outX,
+                SelectLayout.PortraitCenterY + bob + parallaxY + introY);
 
             _portrait.Draw(
                 spriteBatch,
@@ -142,8 +150,8 @@ public sealed class FighterMenuScreen : MenuScreen
         }
 
         var currentCenter = new Vector2(
-            MenuLayout.PortraitCenterX + sway + parallaxX + inX,
-            MenuLayout.PortraitCenterY + bob + parallaxY + introY);
+            SelectLayout.PortraitCenterX + sway + parallaxX + inX,
+            SelectLayout.PortraitCenterY + bob + parallaxY + introY);
         float currentRotation = MathHelper.ToRadians(profile.PortraitRotationDegrees) + tilt
                                 - _slideDir * 0.05f * (1f - SelectMotion.EaseOutCubic(p));
         float currentScale = idleScale * introScale
@@ -189,7 +197,7 @@ public sealed class FighterMenuScreen : MenuScreen
         _selected = index;
         _slide = 0f;
         _slideDir = delta;
-        _shards.Burst(MenuLayout.PortraitCenterX, MenuLayout.PortraitCenterY, delta);
+        _shards.Burst(SelectLayout.PortraitCenterX, SelectLayout.PortraitCenterY, delta);
         SyncState();
     }
 
@@ -218,11 +226,10 @@ public sealed class FighterMenuScreen : MenuScreen
     {
         x = 0f;
         y = 0f;
-        var stage = new Rectangle(0, 0, 512, Balance.ViewHeight);
-        if (!Contains(stage, MousePosition))
+        if (!Contains(SelectLayout.PortraitClick, MousePosition))
             return;
 
-        x = (MousePosition.X - MenuLayout.PortraitCenterX) / MenuLayout.PortraitCenterX * -6f;
-        y = (MousePosition.Y - MenuLayout.PortraitCenterY) / MenuLayout.PortraitCenterY * -4f;
+        x = (MousePosition.X - SelectLayout.PortraitCenterX) / SelectLayout.PortraitCenterX * -6f;
+        y = (MousePosition.Y - SelectLayout.PortraitCenterY) / SelectLayout.PortraitCenterY * -4f;
     }
 }
