@@ -1,3 +1,4 @@
+using System.Reflection;
 using DvorFight.Audio;
 using DvorFight.Combat;
 using DvorFight.Config;
@@ -68,12 +69,20 @@ public class Game1 : Game
         IsMouseVisible = true;
     }
 
+    private static string GetProductVersion()
+    {
+        string version = typeof(Game1).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.01";
+        int metadataSeparator = version.IndexOf('+');
+        return metadataSeparator >= 0 ? version[..metadataSeparator] : version;
+    }
+
     protected override void Initialize()
     {
         _graphics.PreferredBackBufferWidth = Balance.ViewWidth;
         _graphics.PreferredBackBufferHeight = Balance.ViewHeight;
         _graphics.ApplyChanges();
-        Window.Title = "Дворовой файтинг";
+        Window.Title = $"Дворовой файтинг {GetProductVersion()}";
         base.Initialize();
     }
 
