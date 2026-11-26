@@ -110,6 +110,8 @@ public static class SelfTest
         int checks = 0;
         var origin = new Vector2(-100f, -100f);
 
+        static Vector2 Center(Rectangle rect) => new(rect.Center.X, rect.Center.Y);
+
         void Expect(bool condition, string message)
         {
             checks++;
@@ -255,6 +257,54 @@ public static class SelfTest
             retarget.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
         Expect(!retarget.IsTransitioning && MathF.Abs(retarget.PortraitOffsetX) < 0.01f,
             "перенацеленный слайд не завершается");
+
+        // Quick character menu opened by «Играть»: portrait + slanted list, no stats.
+        var quickState = new MenuState();
+        var quick = new FighterMenuScreen(quickState);
+        quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(quick.IntroProgress > 0f, "интро быстрого меню не запускается");
+        for (int i = 0; i < 40; i++)
+            quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(quick.IntroProgress >= 1f, "интро быстрого меню не завершается");
+
+        quick.Update(new MenuInput { Right = true, MousePosition = origin }, 1f / 60f);
+        Expect(quickState.SelectedFighter == FighterKind.Pantera,
+            "стрелка вправо не выбирает бойца в быстром меню");
+        Expect(quick.IsTransitioning, "быстрое меню не запускает слайд портрета");
+        for (int i = 0; i < 30; i++)
+            quick.Update(new MenuInput { MousePosition = origin }, 1f / 60f);
+        Expect(!quick.IsTransitioning && MathF.Abs(quick.PortraitOffsetX) < 0.01f,
+            "слайд быстрого меню не завершается");
+
+        quick.Update(new MenuInput { Down = true, MousePosition = origin }, 1f / 60f);
+        Expect(quick.Cursor == 2, "Down не переводит курсор на пункт «В БОЙ»");
+        Expect(quickState.SelectedFighter == FighterKind.Pantera,
+            "переход на «В БОЙ» сбрасывает выбранного бойца");
+        next = quick.Update(new MenuInput { Confirm = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
+            "Enter на «В БОЙ» не запускает бой с выбранным бойцом");
+
+        // Mouse path of the quick menu: click a row to choose, click «В БОЙ» to start.
+        var quickMouseState = new MenuState();
+        var quickMouse = new FighterMenuScreen(quickMouseState);
+        quickMouse.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(MenuLayout.ItemRect(1)),
+        }, 1f / 60f);
+        Expect(quickMouseState.SelectedFighter == FighterKind.Pantera,
+            "клик по строке быстрого меню не выбирает бойца");
+
+        next = quickMouse.Update(new MenuInput
+        {
+            MouseClicked = true,
+            MousePosition = Center(MenuLayout.ItemRect(2)),
+        }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.StartFight && next.Fighter == FighterKind.Pantera,
+            "клик по «В БОЙ» не запускает бой");
+
+        next = quickMouse.Update(new MenuInput { Back = true, MousePosition = origin }, 1f / 60f);
+        Expect(next.Type == MenuCommandType.BackToTitle, "Esc не закрывает быстрое меню");
 
         // Mouse path: click a title button, the second fighter tab, a difficulty pill and Start.
         title = new TitleScreen();

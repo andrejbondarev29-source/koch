@@ -39,6 +39,7 @@ public class Game1 : Game
     private MenuScreen _menuScreen = null!;
 
     private GameScreen _screen = GameScreen.Title;
+    private GameScreen _lastSelectScreen = GameScreen.FighterMenu;
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;
     private int _framesDrawn;
@@ -127,11 +128,17 @@ public class Game1 : Game
         _menuState.Difficulty = InitialDifficulty;
 
         _screen = InitialScreen;
+        _lastSelectScreen = _screen == GameScreen.FighterSelect
+            ? GameScreen.FighterSelect
+            : GameScreen.FighterMenu;
         switch (_screen)
         {
             case GameScreen.Fight:
                 _session.Start(_menuState.SelectedFighter, _menuState.Difficulty);
-                _menuScreen = CreateFighterSelect(focusStart: false);
+                _menuScreen = CreateFighterMenu();
+                break;
+            case GameScreen.FighterMenu:
+                _menuScreen = CreateFighterMenu();
                 break;
             case GameScreen.FighterSelect:
                 _menuScreen = CreateFighterSelect(focusStart: false);
@@ -185,7 +192,7 @@ public class Game1 : Game
         switch (command.Type)
         {
             case MenuCommandType.Play:
-                OpenFighterSelect(focusStart: true);
+                OpenFighterMenu();
                 break;
             case MenuCommandType.OpenFighters:
                 OpenFighterSelect(focusStart: false);
@@ -214,22 +221,42 @@ public class Game1 : Game
             if (Pressed(keyboard, Keys.R) || Pressed(keyboard, Keys.Enter) || Click(mouse))
                 StartFight(_session.Player.Kind, _session.Difficulty);
             else if (Pressed(keyboard, Keys.Escape))
-                OpenFighterSelect(focusStart: false);
+                OpenLastSelect();
         }
         else if (Pressed(keyboard, Keys.Escape))
         {
-            OpenFighterSelect(focusStart: false);
+            OpenLastSelect();
         }
     }
 
+    private FighterMenuScreen CreateFighterMenu() =>
+        new(_menuState);
+
     private FighterSelectScreen CreateFighterSelect(bool focusStart) =>
         new(_menuState, focusStart);
+
+    private void OpenFighterMenu()
+    {
+        _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
+        _menuScreen = CreateFighterMenu();
+        _screen = GameScreen.FighterMenu;
+        _lastSelectScreen = _screen;
+    }
 
     private void OpenFighterSelect(bool focusStart)
     {
         _ = _input.ConsumeCommands(); // drop anything queued while a menu was open
         _menuScreen = CreateFighterSelect(focusStart);
         _screen = GameScreen.FighterSelect;
+        _lastSelectScreen = _screen;
+    }
+
+    private void OpenLastSelect()
+    {
+        if (_lastSelectScreen == GameScreen.FighterSelect)
+            OpenFighterSelect(focusStart: false);
+        else
+            OpenFighterMenu();
     }
 
     private void GoToTitle()
@@ -244,6 +271,8 @@ public class Game1 : Game
         _ = _input.ConsumeCommands(); // discard stale menu commands
         _menuState.SelectedFighter = kind;
         _menuState.Difficulty = difficulty;
+        if (_screen == GameScreen.FighterMenu || _screen == GameScreen.FighterSelect)
+            _lastSelectScreen = _screen;
         _session.Start(kind, difficulty);
         _screen = GameScreen.Fight;
     }

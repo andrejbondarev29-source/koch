@@ -6,9 +6,9 @@ namespace DvorFight.Rendering;
 public enum MenuCommandType
 {
     None,
-    /// <summary>«Играть»: open fighter select with the start button focused.</summary>
+    /// <summary>«Играть»: open the quick character menu.</summary>
     Play,
-    /// <summary>«Бойцы / Характеристики»: open fighter select with the roster focused.</summary>
+    /// <summary>«Бойцы / Характеристики»: open the detailed stats/difficulty screen.</summary>
     OpenFighters,
     StartFight,
     BackToTitle,
